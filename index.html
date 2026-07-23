@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SuperNote — 笔记 · 浏览 · AI</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{brand:{50:'#eef2ff',100:'#e0e7ff',500:'#6366f1',600:'#4f46e5',700:'#4338ca'}}}}}
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}
+
+/* ===== THEME CSS VARIABLES ===== */
+:root{
+  --bg-body:#f1f5f9;--bg-panel:#fff;--bg-header:#fff;--bg-input:#f8fafc;--bg-hover:#f1f5f9;--bg-chat:#f8fafc;
+  --border:#e2e8f0;--border-light:#f1f5f9;
+  --text-primary:#0f172a;--text-secondary:#334155;--text-muted:#94a3b8;--text-faint:#cbd5e1;
+  --editor-text:#334155;--editor-h1:#0f172a;--editor-h2:#1e293b;
+  --scrollbar-thumb:#cbd5e1;--scrollbar-hover:#94a3b8;
+  --overlay-bg:rgba(0,0,0,.25);
+}
+[data-theme="dark"]{
+  --bg-body:#0f172a;--bg-panel:#1e293b;--bg-header:#1e293b;--bg-input:#334155;--bg-hover:#334155;--bg-chat:#334155;
+  --border:#334155;--border-light:#1e293b;
+  --text-primary:#f1f5f9;--text-secondary:#cbd5e1;--text-muted:#64748b;--text-faint:#475569;
+  --editor-text:#e2e8f0;--editor-h1:#f1f5f9;--editor-h2:#e2e8f0;
+  --scrollbar-thumb:#475569;--scrollbar-hover:#64748b;
+  --overlay-bg:rgba(0,0,0,.5);
+}
+[data-theme="sepia"]{
+  --bg-body:#f5f0e8;--bg-panel:#faf6ef;--bg-header:#faf6ef;--bg-input:#f0ebe2;--bg-hover:#f0ebe2;--bg-chat:#f0ebe2;
+  --border:#e0d8c8;--border-light:#ebe5d8;
+  --text-primary:#3c2f1e;--text-secondary:#5c4b33;--text-muted:#a09080;--text-faint:#c8bda8;
+  --editor-text:#3c2f1e;--editor-h1:#2c1f0e;--editor-h2:#3c2f1e;
+  --scrollbar-thumb:#c8bda8;--scrollbar-hover:#a09080;
+  --overlay-bg:rgba(60,47,30,.2);
+}
+
+body{background:var(--bg-body);color:var(--text-primary);transition:background .25s,color .25s}
+
+/* ===== RESIZE HANDLES ===== */
+.resize-h{width:5px;cursor:col-resize;background:transparent;position:relative;z-index:20;flex-shrink:0;transition:background .15s}
+.resize-h:hover,.resize-h.active{background:#6366f1}
+.resize-h::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:32px;border-radius:2px;background:var(--text-faint);opacity:0;transition:opacity .15s}
+.resize-h:hover::after,.resize-h.active::after{opacity:1;background:#6366f1}
+
+/* ===== IF RESIZE SHIELD (prevent iframe stealing events) ===== */
+.resize-shield{position:absolute;inset:0;z-index:5;display:none}
+.resize-shield.show{display:block}
+
+/* ===== EDITOR CONTENT ===== */
+.editor-content{outline:none;min-height:300px;font-size:15px;line-height:1.7;color:var(--editor-text)}
+.editor-content p{margin-bottom:.75em}
+.editor-content h1{font-size:1.7rem;font-weight:700;color:var(--editor-h1);margin-top:1em;margin-bottom:.4em}
+.editor-content h2{font-size:1.3rem;font-weight:600;color:var(--editor-h2);margin-top:.7em;margin-bottom:.35em}
+.editor-content ul{list-style-type:disc;padding-left:1.25rem;margin-bottom:.75em}
+.editor-content ol{list-style-type:decimal;padding-left:1.25rem;margin-bottom:.75em}
+.editor-content blockquote{border-left:3px solid var(--border);padding-left:.8rem;color:var(--text-muted);font-style:italic;margin:.75em 0}
+mark.hl-yellow{background:#fef08a;padding:1px 4px;border-radius:3px;border-bottom:2px solid #facc15;cursor:pointer}
+mark.hl-green{background:#a7f3d0;padding:1px 4px;border-radius:3px;border-bottom:2px solid #34d399;cursor:pointer}
+mark.hl-pink{background:#fbcfe8;padding:1px 4px;border-radius:3px;border-bottom:2px solid #f472b6;cursor:pointer}
+mark.hl-blue{background:#bae6fd;padding:1px 4px;border-radius:3px;border-bottom:2px solid #38bdf8;cursor:pointer}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-hover)}
+
+/* ===== NOTE LIST OVERLAY ===== */
+.note-overlay{position:fixed;inset:0;z-index:50;display:none}
+.note-overlay.show{display:flex}
+.note-overlay .backdrop{position:absolute;inset:0;background:var(--overlay-bg)}
+.note-overlay .panel{position:absolute;left:0;top:0;bottom:0;width:340px;background:var(--bg-panel);border-right:1px solid var(--border);box-shadow:4px 0 24px rgba(0,0,0,.1);display:flex;flex-direction:column;animation:slide-in .2s ease-out}
+@keyframes slide-in{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+
+/* ===== ANNOTATION FLASH ===== */
+@keyframes ann-flash{0%{outline:2px solid #6366f1;outline-offset:2px}100%{outline:2px solid transparent;outline-offset:2px}}
+.ann-flash{animation:ann-flash 1.2s ease-out}
+.ann-item:hover{border-color:var(--text-muted) !important}
+.ann-detail{animation:ann-slide .15s ease-out}
+@keyframes ann-slide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== AI CHAT ===== */
+.ai-msg{animation:msg-in .2s ease-out}
+@keyframes msg-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.ai-msg pre{background:#1e293b;color:#e2e8f0;padding:10px;border-radius:8px;overflow-x:auto;font-size:12px;margin:8px 0;font-family:'SF Mono',Menlo,monospace}
+.ai-msg code{font-family:'SF Mono',Menlo,monospace;font-size:12px;background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px}
+.ai-msg pre code{background:none;padding:0}
+.ai-msg a{color:#6366f1;text-decoration:underline}
+.ai-msg ul,.ai-msg ol{padding-left:18px;margin:4px 0}
+.ai-msg li{margin:2px 0}
+.tdot span{animation:td 1.4s infinite;display:inline-block;font-size:10px}
+.tdot span:nth-child(2){animation-delay:.2s}
+.tdot span:nth-child(3){animation-delay:.4s}
+@keyframes td{0%,80%,100%{opacity:.2}40%{opacity:1}}
+
+/* ===== TOAST ===== */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:8px 20px;background:#1e293b;color:#f1f5f9;border-radius:10px;font-size:13px;z-index:300;animation:msg-in .15s ease-out;pointer-events:none}
+
+/* ===== TOOLBAR WRAP ===== */
+#formatToolbar{flex-wrap:wrap}
+
+/* ===== THEME SWITCHER ===== */
+.theme-btn{width:20px;height:20px;border-radius:50%;border:2px solid var(--border);cursor:pointer;transition:transform .15s,border-color .15s}
+.theme-btn:hover{transform:scale(1.15)}
+.theme-btn.active{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.3)}
+.theme-btn[data-t="light"]{background:#fff}
+.theme-btn[data-t="dark"]{background:#1e293b}
+.theme-btn[data-t="sepia"]{background:#f5f0e8}
+</style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col" data-theme="light">
+
+<!-- ===== TOP HEADER ===== -->
+<header id="topHeader" style="background:var(--bg-header);border-bottom:1px solid var(--border)" class="h-12 px-4 flex items-center justify-between shrink-0 z-10 shadow-sm">
+  <div class="flex items-center gap-2.5 font-bold text-sm" style="color:var(--text-primary)">
+    <div class="p-1.5 bg-indigo-600 text-white rounded-lg flex items-center justify-center shadow-sm">
+      <i data-lucide="highlighter" class="w-4 h-4"></i>
+    </div>
+    <span>SuperNote</span>
+    <span class="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium border border-indigo-100">笔记 · 浏览 · AI</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <!-- theme switcher -->
+    <div class="flex items-center gap-1.5">
+      <span style="color:var(--text-muted)" class="text-[10px] mr-0.5">主题</span>
+      <button class="theme-btn active" data-t="light" title="浅色" onclick="setTheme('light')"></button>
+      <button class="theme-btn" data-t="dark" title="深色" onclick="setTheme('dark')"></button>
+      <button class="theme-btn" data-t="sepia" title="护眼" onclick="setTheme('sepia')"></button>
+    </div>
+    <span id="save-status" class="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md font-medium border border-emerald-100">
+      <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> 已自动保存
+    </span>
+  </div>
+</header>
+
+<!-- ===== MAIN 3-COLUMN LAYOUT ===== -->
+<div class="flex-1 flex overflow-hidden" id="mainLayout">
+
+  <!-- LEFT: NOTE EDITOR PANEL (resizable) -->
+  <div class="flex flex-col overflow-hidden shrink-0 relative" id="notePanel" style="width:380px;background:var(--bg-panel)">
+    <!-- note panel header -->
+    <div style="border-bottom:1px solid var(--border-light)" class="px-4 py-2.5 flex items-center justify-between shrink-0">
+      <div class="flex items-center gap-2">
+        <button id="btnOpenNoteList" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-80 transition-colors" title="打开全部笔记">
+          <i data-lucide="panel-left" class="w-4 h-4"></i>
+        </button>
+        <span style="color:var(--text-muted)" class="text-xs font-semibold tracking-wider uppercase">当前笔记</span>
+      </div>
+      <div class="flex items-center gap-1">
+        <button id="btnImport" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-80 transition-colors" title="导入笔记">
+          <i data-lucide="upload" class="w-4 h-4"></i>
+        </button>
+        <button id="btnExport" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-80 transition-colors" title="导出笔记">
+          <i data-lucide="download" class="w-4 h-4"></i>
+        </button>
+        <button id="btnAddNote" class="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors" title="新建笔记">
+          <i data-lucide="plus" class="w-4 h-4"></i>
+        </button>
+        <button id="btnDeleteNote" class="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="删除笔记">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+    <!-- note title -->
+    <div class="px-5 pt-4 pb-2 shrink-0">
+      <input id="noteTitleInput" type="text" placeholder="笔记标题…" style="color:var(--text-primary)" class="w-full text-lg font-bold outline-none placeholder:text-slate-300 bg-transparent">
+    </div>
+    <!-- format toolbar — flex-wrap for narrow panels -->
+    <div id="formatToolbar" style="border-bottom:1px solid var(--border-light)" class="px-5 pb-2 flex items-center gap-1 shrink-0">
+      <button onclick="execCmd('bold')" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70" title="加粗"><i data-lucide="bold" class="w-3.5 h-3.5"></i></button>
+      <button onclick="execCmd('italic')" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70" title="斜体"><i data-lucide="italic" class="w-3.5 h-3.5"></i></button>
+      <button onclick="execCmd('underline')" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70" title="下划线"><i data-lucide="underline" class="w-3.5 h-3.5"></i></button>
+      <div style="background:var(--border)" class="w-px h-3.5 mx-0.5"></div>
+      <button onclick="execCmd('formatBlock','<h1>')" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70" title="标题1"><i data-lucide="heading-1" class="w-3.5 h-3.5"></i></button>
+      <button onclick="execCmd('formatBlock','<h2>')" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70" title="标题2"><i data-lucide="heading-2" class="w-3.5 h-3.5"></i></button>
+      <div style="background:var(--border)" class="w-px h-3.5 mx-0.5"></div>
+      <button onclick="execCmd('insertUnorderedList')" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70" title="列表"><i data-lucide="list" class="w-3.5 h-3.5"></i></button>
+      <button onclick="execCmd('insertOrderedList')" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70" title="有序列表"><i data-lucide="list-ordered" class="w-3.5 h-3.5"></i></button>
+      <button onclick="execCmd('formatBlock','<blockquote>')" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70" title="引用"><i data-lucide="quote" class="w-3.5 h-3.5"></i></button>
+      <div style="background:var(--border)" class="w-px h-3.5 mx-0.5"></div>
+      <!-- annotation color buttons -->
+      <button onclick="setTempColor('yellow')" class="color-btn w-4 h-4 rounded-full bg-yellow-300 ring-1 ring-yellow-400 ring-offset-1" data-color="yellow" title="高亮-重点"></button>
+      <button onclick="setTempColor('green')" class="color-btn w-4 h-4 rounded-full bg-emerald-300 ring-1 ring-emerald-400 ring-offset-1" data-color="green" title="高亮-疑问"></button>
+      <button onclick="setTempColor('pink')" class="color-btn w-4 h-4 rounded-full bg-pink-300 ring-1 ring-pink-400 ring-offset-1" data-color="pink" title="高亮-要点"></button>
+      <button onclick="setTempColor('blue')" class="color-btn w-4 h-4 rounded-full bg-sky-300 ring-1 ring-sky-400 ring-offset-1" data-color="blue" title="高亮-例证"></button>
+      <button onclick="applyAnnotation()" class="p-1 rounded hover:bg-indigo-50 text-indigo-500 ml-0.5" title="标注选中文字"><i data-lucide="highlighter" class="w-3.5 h-3.5"></i></button>
+    </div>
+    <!-- note editor body -->
+    <div class="flex-1 overflow-y-auto px-5 py-4">
+      <div id="editor" contenteditable="true" class="editor-content"></div>
+    </div>
+    <!-- annotations panel — always visible, expandable items -->
+    <div id="annBar" style="border-top:1px solid var(--border-light);background:var(--bg-input)" class="shrink-0">
+      <div class="px-4 py-2 flex items-center justify-between">
+        <div style="color:var(--text-muted)" class="flex items-center gap-1.5 text-xs font-medium">
+          <i data-lucide="message-square-quote" class="w-3.5 h-3.5 text-indigo-500"></i>
+          标注 <span id="annCount" style="background:var(--border);color:var(--text-secondary)" class="px-1.5 py-0.5 rounded-full text-[10px] font-semibold">0</span>
+        </div>
+        <button id="btnToggleAnn" class="text-xs text-indigo-600 hover:underline">收起</button>
+      </div>
+      <div id="annList" class="px-3 pb-3 space-y-1.5 max-h-64 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- RESIZE HANDLE LEFT -->
+  <div class="resize-h" id="resizeLeft"></div>
+
+  <!-- CENTER: BROWSER -->
+  <div class="flex-1 flex flex-col min-w-0" style="background:var(--bg-panel)">
+    <!-- browser topbar -->
+    <div style="background:var(--bg-input);border-bottom:1px solid var(--border)" class="h-11 flex items-center gap-2 px-3 shrink-0">
+      <button id="btnBack" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+      <button id="btnFwd" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+      <button id="btnRef" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70"><i data-lucide="rotate-cw" class="w-4 h-4"></i></button>
+      <div style="background:var(--bg-panel);border:1px solid var(--border)" class="flex-1 flex items-center h-7 rounded-full px-3 gap-1.5 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+        <span id="lockIco" class="text-[11px]">🔒</span>
+        <input id="urlInp" type="text" style="color:var(--text-primary)" class="flex-1 text-xs outline-none bg-transparent" placeholder="输入网址或搜索…" value="https://www.wikipedia.org" spellcheck="false">
+      </div>
+      <button id="toggleAI" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:text-indigo-600 transition-colors" title="AI 面板"><i data-lucide="bot" class="w-4 h-4"></i></button>
+    </div>
+    <!-- iframe -->
+    <div class="flex-1 relative">
+      <div class="resize-shield" id="resizeShield"></div>
+      <iframe id="webFrame" src="https://www.wikipedia.org" sandbox="allow-same-origin allow-scripts allow-forms allow-popups" referrerpolicy="no-referrer" class="w-full h-full border-none"></iframe>
+    </div>
+  </div>
+
+  <!-- RESIZE HANDLE RIGHT -->
+  <div class="resize-h" id="resizeRight"></div>
+
+  <!-- RIGHT: AI PANEL (resizable) -->
+  <div class="flex flex-col overflow-hidden shrink-0" id="aiPanel" style="width:360px;background:var(--bg-panel);border-left:1px solid var(--border)">
+    <!-- ai header -->
+    <div style="border-bottom:1px solid var(--border)" class="px-4 py-2.5 flex items-center justify-between shrink-0">
+      <div class="flex items-center gap-2 font-semibold text-sm" style="color:var(--text-primary)">
+        <div class="w-6 h-6 rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs">🤖</div>
+        SuperNote AI
+      </div>
+      <button id="aiClose" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+    <!-- settings -->
+    <details style="border-bottom:1px solid var(--border-light)" class="px-4 py-2 shrink-0">
+      <summary style="color:var(--text-muted)" class="text-[11px] cursor-pointer select-none flex items-center gap-1"><i data-lucide="settings" class="w-3 h-3"></i> API 设置</summary>
+      <div class="mt-2 space-y-1.5">
+        <div class="flex items-center gap-2"><label style="color:var(--text-muted)" class="text-[10px] w-8 shrink-0">地址</label><input id="cfgBase" value="https://api.deepseek.com/v1" style="background:var(--bg-input);border-color:var(--border);color:var(--text-primary)" class="flex-1 h-6 text-[11px] px-2 rounded border outline-none focus:border-indigo-400"></div>
+        <div class="flex items-center gap-2"><label style="color:var(--text-muted)" class="text-[10px] w-8 shrink-0">密钥</label><input id="cfgKey" type="password" placeholder="sk-…" style="background:var(--bg-input);border-color:var(--border);color:var(--text-primary)" class="flex-1 h-6 text-[11px] px-2 rounded border outline-none focus:border-indigo-400"></div>
+        <div class="flex items-center gap-2"><label style="color:var(--text-muted)" class="text-[10px] w-8 shrink-0">模型</label><input id="cfgModel" value="deepseek-chat" style="background:var(--bg-input);border-color:var(--border);color:var(--text-primary)" class="flex-1 h-6 text-[11px] px-2 rounded border outline-none focus:border-indigo-400"></div>
+      </div>
+    </details>
+    <!-- quick actions -->
+    <div class="px-3 py-2 flex flex-wrap gap-1 shrink-0">
+      <button class="qa-btn text-[10px] px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-500 hover:text-white transition-colors" data-p="summarize-page">📄 总结网页</button>
+      <button class="qa-btn text-[10px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 hover:bg-indigo-500 hover:text-white transition-colors" data-p="请解释以下内容的含义：">💡 解释</button>
+      <button class="qa-btn text-[10px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 hover:bg-indigo-500 hover:text-white transition-colors" data-p="请将以下内容翻译成中文：">🌐 翻译</button>
+      <button class="qa-btn text-[10px] px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-colors" data-p="save-note">💾 存为笔记</button>
+    </div>
+    <!-- chat area -->
+    <div class="flex-1 overflow-y-auto px-4 py-3 space-y-3" id="chatArea">
+      <div class="ai-msg flex gap-2">
+        <div class="w-6 h-6 rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-[10px] shrink-0">🤖</div>
+        <div style="color:var(--text-secondary);background:var(--bg-chat)" class="flex-1 text-[12.5px] leading-relaxed rounded-lg p-3">
+          你好！我是 SuperNote AI 助手 🎉<br><br>
+          • 📄 点击「总结网页」自动读取当前页面并生成摘要<br>
+          • 🤖 发消息时 AI 自动附带当前网页内容作为上下文<br>
+          • 🖱️ 在网页中<b>划词</b>可快速解释/翻译/存笔记<br>
+          • 📓 笔记支持<b>高亮标注 + 批注</b>（点击标注可编辑）<br>
+          • 💾 AI 回复可一键存为笔记<br><br>
+          在「⚙️ API 设置」配置密钥即可开始。
+        </div>
+      </div>
+    </div>
+    <!-- input -->
+    <div style="border-top:1px solid var(--border-light)" class="px-3 py-2 shrink-0">
+      <div style="background:var(--bg-input);border:1px solid var(--border)" class="flex items-end gap-2 rounded-xl px-3 py-2 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-50 transition-all">
+        <textarea id="chatInp" rows="1" style="color:var(--text-primary)" class="flex-1 resize-none text-[12.5px] leading-5 outline-none bg-transparent max-h-24" placeholder="输入消息，Enter 发送…"></textarea>
+        <button id="sendBtn" class="w-7 h-7 flex items-center justify-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition-colors shrink-0"><i data-lucide="send" class="w-3.5 h-3.5"></i></button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== NOTE LIST OVERLAY ===== -->
+<div class="note-overlay" id="noteOverlay">
+  <div class="backdrop" id="noteOverlayBg"></div>
+  <div class="panel">
+    <div style="border-bottom:1px solid var(--border-light)" class="px-4 py-3 flex items-center justify-between">
+      <span style="color:var(--text-primary)" class="text-sm font-semibold flex items-center gap-2"><i data-lucide="notebook-pen" class="w-4 h-4 text-indigo-500"></i> 全部笔记</span>
+      <div class="flex items-center gap-1">
+        <button id="overlayImportBtn" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-70 transition-colors" title="导入笔记"><i data-lucide="upload" class="w-4 h-4"></i></button>
+        <button id="overlayExportBtn" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-70 transition-colors" title="导出笔记"><i data-lucide="download" class="w-4 h-4"></i></button>
+        <button id="overlayAddBtn" class="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors" title="新建"><i data-lucide="plus" class="w-4 h-4"></i></button>
+        <button id="overlayCloseBtn" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-70"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+    </div>
+    <div id="noteListContainer" class="flex-1 overflow-y-auto p-3 space-y-1"></div>
+  </div>
+</div>
+
+<!-- ===== SELECTION POPUP ===== -->
+<div class="sp hidden fixed z-[60] bg-white rounded-xl shadow-2xl border border-slate-200 p-1.5 flex gap-1" id="selPop">
+  <button data-act="ask" class="px-3 py-1.5 text-xs rounded-lg hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 transition-colors flex items-center gap-1"><i data-lucide="bot" class="w-3 h-3"></i> 问 AI</button>
+  <button data-act="explain" class="px-3 py-1.5 text-xs rounded-lg hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 transition-colors flex items-center gap-1"><i data-lucide="lightbulb" class="w-3 h-3"></i> 解释</button>
+  <button data-act="translate" class="px-3 py-1.5 text-xs rounded-lg hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 transition-colors flex items-center gap-1"><i data-lucide="languages" class="w-3 h-3"></i> 翻译</button>
+  <button data-act="note" class="px-3 py-1.5 text-xs rounded-lg hover:bg-emerald-50 hover:text-emerald-600 text-slate-600 transition-colors flex items-center gap-1"><i data-lucide="notebook-pen" class="w-3 h-3"></i> 存笔记</button>
+</div>
+
+<!-- ===== FLOATING ANNOTATION MENU (fixed — follows mouse) ===== -->
+<div id="floatingMenu" class="hidden fixed z-[70] bg-slate-900 text-white rounded-xl shadow-2xl p-2.5 border border-slate-700 flex-col gap-2 min-w-[260px]" style="transform:translate(-50%,-100%)">
+  <div class="flex items-center justify-between gap-1.5 px-1">
+    <span class="text-[11px] font-medium text-slate-400">高亮颜色:</span>
+    <div class="flex items-center gap-1.5">
+      <button onclick="setTempColor('yellow')" class="color-btn w-5 h-5 rounded-full bg-yellow-300 hover:scale-110 transition-transform ring-offset-1 ring-slate-900 ring-2 ring-transparent" data-color="yellow" title="重点"></button>
+      <button onclick="setTempColor('green')" class="color-btn w-5 h-5 rounded-full bg-emerald-300 hover:scale-110 transition-transform ring-offset-1 ring-slate-900" data-color="green" title="疑问"></button>
+      <button onclick="setTempColor('pink')" class="color-btn w-5 h-5 rounded-full bg-pink-300 hover:scale-110 transition-transform ring-offset-1 ring-slate-900" data-color="pink" title="要点"></button>
+      <button onclick="setTempColor('blue')" class="color-btn w-5 h-5 rounded-full bg-sky-300 hover:scale-110 transition-transform ring-offset-1 ring-slate-900" data-color="blue" title="例证"></button>
+    </div>
+  </div>
+  <div class="pt-1 border-t border-slate-800">
+    <textarea id="commentInput" rows="1" placeholder="添加批注（Enter 保存，Shift+Enter 换行）…" class="w-full bg-slate-800 text-xs text-slate-100 px-2.5 py-1.5 rounded border border-slate-700 outline-none focus:border-indigo-500 placeholder-slate-500 resize-none max-h-24" style="min-width:0"></textarea>
+  </div>
+  <div class="flex items-center gap-1.5">
+    <button onclick="applyAnnotation()" class="flex-1 py-1 text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded transition-colors flex items-center justify-center gap-1">
+      <i data-lucide="check" class="w-3.5 h-3.5"></i> 保存高亮与批注
+    </button>
+  </div>
+</div>
+
+<!-- ===== ANNOTATION CLICK POPUP (fixed — follows click position) ===== -->
+<div id="annPopup" class="hidden fixed z-[70] bg-white rounded-xl shadow-2xl p-2.5 border border-slate-200 min-w-[240px]" style="transform:translate(-50%,-100%)">
+  <div id="annPopupContent" class="space-y-2"></div>
+</div>
+
+<script>
+// ============================================================
+// BoClaw — 笔记 · 浏览 · AI  (Full Application Logic)
+// ============================================================
+
+/* ---------- DEFAULT DATA ---------- */
+const DEFAULT_NOTES = [
+  {
+    id: '1',
+    title: '量子计算与现代物理简记',
+    category: '学习笔记',
+    content: '<h1>量子叠加与纠缠基础</h1><p>量子叠加是量子力学的基本原理之一。它表明一个量子系统可以同时处于多个可能状态的组合中。例如，在量子计算机中，量子比特 (Qubit) 可以同时表示 0 和 1 的某种叠加状态。</p><p>试着用鼠标选中这段文字：<mark class="hl-yellow" data-ann-id="demo-1">量子纠缠是指两个或多个粒子以某种方式相互联系</mark>，使得一个粒子的状态不能独立于其他粒子的状态被描述。</p><p>高亮与标注功能可以让你的学习整理效率大幅提升！</p>',
+    annotations: [
+      { id: 'demo-1', text: '量子纠缠是指两个或多个粒子以某种方式相互联系', color: 'yellow', comment: '核心概念：需要复习 Bell 态的定义', createdAt: Date.now() - 3600000 }
+    ],
+    updatedAt: Date.now()
+  },
+  {
+    id: '2',
+    title: '高效学习与笔记整理法则',
+    category: '工作法',
+    content: '<h2>费曼学习法 (Feynman Technique)</h2><p>1. 选择一个概念；<br>2. 假想你正在向一个10岁的孩子解释它；<br>3. 重新回顾并查漏补缺；<br>4. 简化并精炼你的表达。</p>',
+    annotations: [],
+    updatedAt: Date.now() - 86400000
+  }
+];
+
+const COLOR_CONFIG = {
+  yellow: { label: '重点', border: 'border-yellow-300', bg: 'bg-yellow-100', text: 'text-yellow-800', mark: 'hl-yellow' },
+  green:  { label: '疑问', border: 'border-emerald-300', bg: 'bg-emerald-100', text: 'text-emerald-800', mark: 'hl-green' },
+  pink:   { label: '要点', border: 'border-pink-300', bg: 'bg-pink-100', text: 'text-pink-800', mark: 'hl-pink' },
+  blue:   { label: '例证', border: 'border-sky-300', bg: 'bg-sky-100', text: 'text-sky-800', mark: 'hl-blue' }
+};
+
+/* ---------- STATE ---------- */
+let notes = [];
+let activeNoteId = null;
+let selectedColor = 'yellow';
+let savedRange = null;
+let aiMessages = [];
+let aiStreaming = false;
+let saveTimer = null;
+let annExpanded = true;
+let lastMouseX = 0;
+let lastMouseY = 0;
+let floatingMenuHovered = false;   // flag: mouse is over floatingMenu
+let floatingMenuProtectUntil = 0;  // timestamp: grace period after menu appears
+
+/* ---------- DOM REFS ---------- */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+const editor = $('#editor');
+const noteTitleInput = $('#noteTitleInput');
+const floatingMenu = $('#floatingMenu');
+const commentInput = $('#commentInput');
+const annList = $('#annList');
+const annCount = $('#annCount');
+const notePanel = $('#notePanel');
+const aiPanel = $('#aiPanel');
+const chatArea = $('#chatArea');
+const chatInp = $('#chatInp');
+const urlInp = $('#urlInp');
+const webFrame = $('#webFrame');
+const noteOverlay = $('#noteOverlay');
+const noteListContainer = $('#noteListContainer');
+const selPop = $('#selPop');
+const resizeLeft = $('#resizeLeft');
+const resizeRight = $('#resizeRight');
+
+/* ---------- INIT ---------- */
+function init() {
+  loadNotes();
+  activeNoteId = notes[0]?.id || null;
+  loadActiveNote();
+  renderAnnotations();
+  setupResize();
+  setupEditorEvents();
+  setupBrowserNav();
+  setupAIChat();
+  setupSelectionPopup();
+  setupOverlay();
+  setupQuickActions();
+  loadAISettings();
+  loadTheme();
+  lucide.createIcons();
+  // Pre-fetch current page content on boot
+  setTimeout(prefetchPageContent, 500);
+}
+
+/* ============================================================
+   NOTES — CRUD & PERSISTENCE
+   ============================================================ */
+function loadNotes() {
+  const raw = localStorage.getItem('boclaw_notes');
+  if (raw) { try { notes = JSON.parse(raw); } catch { notes = structuredClone(DEFAULT_NOTES); } }
+  else notes = structuredClone(DEFAULT_NOTES);
+}
+
+function persist() {
+  localStorage.setItem('boclaw_notes', JSON.stringify(notes));
+  const st = $('#save-status');
+  if (st) { st.classList.remove('opacity-0'); clearTimeout(st._t); st._t = setTimeout(() => st.classList.add('opacity-[0.8]'), 1500); }
+}
+
+function saveCurrentEditorState() {
+  const n = notes.find(x => x.id === activeNoteId);
+  if (!n) return;
+  n.title = noteTitleInput.value.trim();
+  n.content = editor.innerHTML;
+  n.updatedAt = Date.now();
+  persist();
+}
+
+function debounceSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveCurrentEditorState, 400);
+}
+
+function loadActiveNote() {
+  const n = notes.find(x => x.id === activeNoteId);
+  if (!n) {
+    noteTitleInput.value = '';
+    editor.innerHTML = '<p class="text-slate-400 italic">新建或选择一篇笔记…</p>';
+    renderAnnotations([]);
+    return;
+  }
+  noteTitleInput.value = n.title || '';
+  editor.innerHTML = n.content || '<p><br></p>';
+  renderAnnotations(n.annotations || []);
+}
+
+function addNote() {
+  saveCurrentEditorState();
+  const n = {
+    id: Date.now().toString(),
+    title: '未命名笔记',
+    category: '默认分类',
+    content: '<p>在这里书写你的笔记…</p>',
+    annotations: [],
+    updatedAt: Date.now()
+  };
+  notes.unshift(n);
+  activeNoteId = n.id;
+  loadActiveNote();
+  persist();
+  renderNoteListOverlay();
+  editor.focus();
+}
+
+function deleteNote(id, evt) {
+  if (evt) evt.stopPropagation();
+  if (!confirm('确定要删除这篇笔记吗？')) return;
+  notes = notes.filter(n => n.id !== id);
+  if (activeNoteId === id) activeNoteId = notes[0]?.id || null;
+  loadActiveNote();
+  persist();
+  renderNoteListOverlay();
+}
+
+function switchNote(id) {
+  if (activeNoteId === id) return;
+  saveCurrentEditorState();
+  activeNoteId = id;
+  loadActiveNote();
+  closeNoteOverlay();
+}
+
+/* ============================================================
+   RICH TEXT COMMANDS
+   ============================================================ */
+function execCmd(cmd, val = null) {
+  document.execCommand(cmd, false, val);
+  editor.focus();
+  debounceSave();
+}
+
+/* ============================================================
+   ANNOTATION — HIGHLIGHT & COMMENT
+   ============================================================ */
+function setTempColor(c) {
+  selectedColor = c;
+  $$('.color-btn').forEach(b => {
+    if (b.dataset.color === c) b.classList.add('ring-2', 'ring-white');
+    else b.classList.remove('ring-2', 'ring-white');
+  });
+}
+
+function applyAnnotation() {
+  if (!savedRange) return;
+  const text = savedRange.toString().trim();
+  if (!text) return;
+  const annId = 'ann-' + Date.now();
+  const mark = document.createElement('mark');
+  mark.className = 'hl-' + selectedColor;
+  mark.setAttribute('data-ann-id', annId);
+  try { savedRange.surroundContents(mark); } catch { document.execCommand('backColor', false, '#fef08a'); }
+  const comment = commentInput.value.trim();
+  const n = notes.find(x => x.id === activeNoteId);
+  if (n) {
+    if (!n.annotations) n.annotations = [];
+    n.annotations.push({ id: annId, text, color: selectedColor, comment, createdAt: Date.now() });
+    n.content = editor.innerHTML;
+    persist();
+    renderAnnotations(n.annotations);
+  }
+  window.getSelection().removeAllRanges();
+  hideFloatingMenu();
+}
+
+function showAnnotationPopup(markEl, event) {
+  const annId = markEl.getAttribute('data-ann-id');
+  const n = notes.find(x => x.id === activeNoteId);
+  const ann = n?.annotations?.find(a => a.id === annId);
+  if (!ann) return;
+  const c = COLOR_CONFIG[ann.color] || COLOR_CONFIG.yellow;
+  const popup = $('#annPopup');
+  const content = $('#annPopupContent');
+  content.innerHTML = `
+    <div class="flex items-center gap-1.5 mb-1">
+      <span class="px-1.5 py-0.5 rounded-full text-[10px] font-medium ${c.bg} ${c.text}">${c.label}</span>
+      <span class="text-[10px] text-slate-400">${esc(ann.text.slice(0, 40))}${ann.text.length > 40 ? '…' : ''}</span>
+    </div>
+    <div class="flex gap-1.5">
+      <textarea id="annEditComment" rows="1" placeholder="编辑批注…（Shift+Enter 换行）" class="flex-1 text-xs px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-indigo-400 resize-none max-h-24" style="color:var(--text-primary);min-width:0">${esc(ann.comment || '')}</textarea>
+      <button onclick="updateAnnotationComment('${annId}')" class="px-2.5 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-500 transition-colors shrink-0">保存</button>
+    </div>
+    <button onclick="removeAnnotation('${annId}');hideAnnPopup()" class="w-full py-1 text-xs text-red-500 hover:bg-red-50 rounded transition-colors flex items-center justify-center gap-1">
+      <i data-lucide="trash-2" class="w-3 h-3"></i> 删除此标注
+    </button>
+  `;
+  // FIXED positioning — use click event's viewport coordinates
+  let posX = event.clientX;
+  let posY = event.clientY - 8;
+  posX = Math.max(125, Math.min(window.innerWidth - 125, posX));
+  posY = Math.max(100, posY);
+  popup.style.left = `${posX}px`;
+  popup.style.top = `${posY}px`;
+  popup.style.transform = 'translate(-50%, -100%)';
+  popup.classList.remove('hidden');
+  lucide.createIcons();
+  // Focus comment input and set up auto-resize + Enter behavior
+  setTimeout(() => {
+    const inp = $('#annEditComment');
+    if (inp) {
+      inp.focus();
+      inp.style.height = 'auto';
+      inp.style.height = Math.min(inp.scrollHeight, 96) + 'px';
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); updateAnnotationComment(annId); } });
+      inp.addEventListener('input', () => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, 96) + 'px'; });
+    }
+  }, 50);
+}
+
+function hideAnnPopup() {
+  const popup = $('#annPopup');
+  if (popup) popup.classList.add('hidden');
+}
+
+function updateAnnotationComment(annId) {
+  const n = notes.find(x => x.id === activeNoteId);
+  if (!n) return;
+  const ann = n.annotations?.find(a => a.id === annId);
+  if (!ann) return;
+  const inp = $('#annEditComment');
+  if (inp) ann.comment = inp.value.trim();
+  n.content = editor.innerHTML;
+  persist();
+  renderAnnotations(n.annotations);
+  hideAnnPopup();
+  toast('批注已更新');
+}
+
+// Close annotation popup on outside click — use mouseup with delay so inner clicks work
+document.addEventListener('mouseup', e => {
+  const popup = $('#annPopup');
+  // Don't close if clicking inside the popup or if it's already hidden
+  if (!popup || popup.classList.contains('hidden') || popup.contains(e.target)) return;
+  // Don't close if clicking on the mark element itself
+  if (e.target.closest && e.target.closest('mark[data-ann-id]')) return;
+  // Small delay to let any button click handlers fire first
+  setTimeout(() => hideAnnPopup(), 150);
+});
+
+function removeAnnotation(annId) {
+  const n = notes.find(x => x.id === activeNoteId);
+  if (!n) return;
+  n.annotations = (n.annotations || []).filter(a => a.id !== annId);
+  const m = editor.querySelector(`mark[data-ann-id="${annId}"]`);
+  if (m) { const p = m.parentNode; while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m); }
+  n.content = editor.innerHTML;
+  persist();
+  renderAnnotations(n.annotations);
+}
+
+function scrollToAnnotation(annId) {
+  const m = editor.querySelector(`mark[data-ann-id="${annId}"]`);
+  if (m) {
+    m.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    m.classList.add('ann-flash');
+    setTimeout(() => m.classList.remove('ann-flash'), 1200);
+  }
+}
+
+function renderAnnotations(annotations) {
+  const n = notes.find(x => x.id === activeNoteId);
+  const list = annotations || n?.annotations || [];
+  annCount.textContent = list.length;
+  annList.innerHTML = '';
+  if (!list.length) {
+    annList.innerHTML = '<div style="color:var(--text-muted)" class="text-center text-xs py-3">暂无标注 — 选中文字后点击高亮颜色按钮即可添加</div>';
+    return;
+  }
+  list.forEach(ann => {
+    const c = COLOR_CONFIG[ann.color] || COLOR_CONFIG.yellow;
+    const d = document.createElement('div');
+    d.className = `ann-item rounded-lg border transition-all`;
+    d.style.cssText = `background:var(--bg-panel);border-color:var(--border);`;
+    // Summary row (always visible) — click to expand
+    const summary = document.createElement('div');
+    summary.className = 'flex items-center gap-2 px-2.5 py-2 cursor-pointer select-none';
+    summary.style.cssText = 'color:var(--text-secondary)';
+    summary.innerHTML = `
+      <span class="w-2 h-2 rounded-full shrink-0 ${c.bg}" style="border:1px solid currentColor;opacity:0.6"></span>
+      <span class="text-[11px] font-medium ${c.text} px-1 py-0.5 rounded ${c.bg} shrink-0">${c.label}</span>
+      <span class="flex-1 text-xs min-w-0" style="color:var(--text-secondary);word-break:break-all;overflow-wrap:break-word">${esc(ann.text.length > 80 ? ann.text.slice(0, 80) + '…' : ann.text)}</span>
+      ${ann.comment ? '<span class="text-[10px] text-indigo-400 shrink-0">💬</span>' : ''}
+      <svg class="ann-arrow w-3 h-3 shrink-0 transition-transform" style="color:var(--text-muted)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    `;
+    // Detail row (collapsed by default)
+    const detail = document.createElement('div');
+    detail.className = 'ann-detail hidden px-2.5 pb-2.5 space-y-2';
+    detail.innerHTML = `
+      <div class="text-xs p-2 rounded cursor-pointer hover:opacity-80" style="background:var(--bg-input);color:var(--text-primary);word-break:break-all;overflow-wrap:break-word" onclick="scrollToAnnotation('${ann.id}')">
+        "${esc(ann.text)}"
+      </div>
+      <div class="flex items-center gap-1.5 text-[11px]">
+        <span style="color:var(--text-muted)">${new Date(ann.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+        <span class="flex-1"></span>
+        <button onclick="removeAnnotation('${ann.id}')" class="px-2 py-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0">删除</button>
+        <button onclick="editAnnotationInline('${ann.id}',this)" class="px-2 py-0.5 rounded text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 transition-colors shrink-0">编辑批注</button>
+      </div>
+      <div class="ann-comment-display text-[11px]" style="color:var(--text-secondary)">
+        ${ann.comment ? `<div class="flex items-start gap-1"><span style="color:var(--text-muted)" class="shrink-0">批注:</span><span style="word-break:break-all;overflow-wrap:break-word;white-space:pre-wrap">${esc(ann.comment)}</span></div>` : '<div style="color:var(--text-faint)">无批注</div>'}
+      </div>
+      <div class="ann-comment-edit hidden">
+        <div class="flex gap-1.5">
+          <textarea rows="1" placeholder="输入批注…（Shift+Enter 换行）" class="ann-edit-input flex-1 text-xs px-2 py-1.5 rounded border outline-none focus:border-indigo-400 resize-none max-h-24" style="background:var(--bg-panel);border-color:var(--border);color:var(--text-primary);min-width:0">${esc(ann.comment || '')}</textarea>
+          <button onclick="saveAnnotationInline('${ann.id}',this)" class="px-2 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-500 transition-colors shrink-0">保存</button>
+          <button onclick="cancelAnnotationInline(this)" class="px-2 py-1 text-xs rounded hover:bg-slate-100 transition-colors shrink-0" style="color:var(--text-muted)">取消</button>
+        </div>
+      </div>
+    `;
+    // Toggle expand/collapse on summary click
+    summary.addEventListener('click', () => {
+      const isHidden = detail.classList.contains('hidden');
+      detail.classList.toggle('hidden');
+      const arrow = summary.querySelector('.ann-arrow');
+      if (arrow) arrow.style.transform = isHidden ? 'rotate(180deg)' : '';
+    });
+    d.appendChild(summary);
+    d.appendChild(detail);
+    annList.appendChild(d);
+  });
+}
+
+function editAnnotationInline(annId, btn) {
+  const item = btn.closest('.ann-item');
+  const display = item.querySelector('.ann-comment-display');
+  const edit = item.querySelector('.ann-comment-edit');
+  display.classList.add('hidden');
+  edit.classList.remove('hidden');
+  const inp = edit.querySelector('.ann-edit-input');
+  if (inp) {
+    inp.focus();
+    inp.style.height = 'auto';
+    inp.style.height = Math.min(inp.scrollHeight, 96) + 'px';
+    // Auto-resize + Enter/Shift+Enter (add only once)
+    if (!inp._annEditSetup) {
+      inp._annEditSetup = true;
+      inp.addEventListener('input', () => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, 96) + 'px'; });
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveAnnotationInline(annId, inp); }
+      });
+    }
+  }
+}
+
+function cancelAnnotationInline(btn) {
+  const item = btn.closest('.ann-item');
+  const display = item.querySelector('.ann-comment-display');
+  const edit = item.querySelector('.ann-comment-edit');
+  edit.classList.add('hidden');
+  display.classList.remove('hidden');
+}
+
+function saveAnnotationInline(annId, btn) {
+  const n = notes.find(x => x.id === activeNoteId);
+  if (!n) return;
+  const ann = n.annotations?.find(a => a.id === annId);
+  if (!ann) return;
+  const item = btn.closest('.ann-item');
+  const inp = item.querySelector('.ann-edit-input');
+  if (inp) ann.comment = inp.value.trim();
+  n.content = editor.innerHTML;
+  persist();
+  renderAnnotations(n.annotations);
+  toast('批注已更新');
+}
+
+/* ============================================================
+   EDITOR EVENTS — SELECTION / FLOATING MENU
+   ============================================================ */
+function setupEditorEvents() {
+  noteTitleInput.addEventListener('input', () => { debounceSave(); });
+  editor.addEventListener('input', () => { debounceSave(); });
+  // Track mouse position so floating menu follows the cursor
+  editor.addEventListener('mousemove', e => { lastMouseX = e.clientX; lastMouseY = e.clientY; });
+  // Track hover state on floatingMenu with enter/leave flags
+  floatingMenu.addEventListener('mouseenter', () => { floatingMenuHovered = true; });
+  floatingMenu.addEventListener('mouseleave', () => { floatingMenuHovered = false; });
+  document.addEventListener('selectionchange', handleSelectionChange);
+  commentInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); applyAnnotation(); } });
+  // Auto-resize commentInput as user types
+  commentInput.addEventListener('input', () => { commentInput.style.height = 'auto'; commentInput.style.height = Math.min(commentInput.scrollHeight, 96) + 'px'; });
+  $('#btnAddNote').onclick = addNote;
+  $('#btnDeleteNote').onclick = () => { if (activeNoteId) deleteNote(activeNoteId); };
+  $('#btnToggleAnn').onclick = () => {
+    annExpanded = !annExpanded;
+    annList.style.display = annExpanded ? '' : 'none';
+    $('#btnToggleAnn').textContent = annExpanded ? '收起' : '展开';
+  };
+  // Click on annotation mark to show edit popup
+  editor.addEventListener('click', e => {
+    const mark = e.target.closest('mark[data-ann-id]');
+    if (mark) {
+      e.preventDefault();
+      e.stopPropagation();
+      showAnnotationPopup(mark, e);
+    }
+  });
+}
+
+function handleSelectionChange() {
+  const sel = window.getSelection();
+  // Don't hide things if user is interacting with annotation popup or floating menu
+  const popup = $('#annPopup');
+  if (popup && !popup.classList.contains('hidden')) return;
+  // Don't hide floating menu if user is hovering over it or focus is inside it
+  if (!floatingMenu.classList.contains('hidden') && floatingMenuHovered) return;
+  if (!floatingMenu.classList.contains('hidden') && document.activeElement && floatingMenu.contains(document.activeElement)) return;
+  // Grace period: don't hide for 400ms after menu appeared (covers mouse travel gap)
+  if (!floatingMenu.classList.contains('hidden') && Date.now() < floatingMenuProtectUntil) return;
+  if (sel.isCollapsed || !editor.contains(sel.anchorNode)) { hideFloatingMenu(); return; }
+  const range = sel.getRangeAt(0);
+  const text = range.toString().trim();
+  if (!text) { hideFloatingMenu(); return; }
+  savedRange = range.cloneRange();
+  // FIXED positioning — directly use viewport (mouse) coordinates
+  let posX = lastMouseX;
+  let posY = lastMouseY - 12;
+  // Clamp so menu stays visible
+  posX = Math.max(135, Math.min(window.innerWidth - 135, posX));
+  posY = Math.max(120, posY);
+  floatingMenu.style.left = `${posX}px`;
+  floatingMenu.style.top = `${posY}px`;
+  floatingMenu.style.transform = 'translate(-50%, -100%)';
+  floatingMenu.classList.remove('hidden');
+  floatingMenu.classList.add('flex');
+  floatingMenuProtectUntil = Date.now() + 400;  // 400ms grace period
+  setTempColor(selectedColor);
+}
+
+function hideFloatingMenu() {
+  floatingMenu.classList.add('hidden');
+  floatingMenu.classList.remove('flex');
+  commentInput.value = '';
+}
+
+/* ============================================================
+   RESIZE — DRAGGABLE PANEL WIDTHS (RAF + iframe shield)
+   ============================================================ */
+function setupResize() {
+  let dragging = null;
+  let startX, startW;
+  let rafId = null;
+  let pendingX = null;
+  const shield = $('#resizeShield');
+
+  const onDown = (panel, handle, e) => {
+    e.preventDefault();
+    dragging = panel;
+    startX = e.clientX;
+    startW = panel.offsetWidth;
+    handle.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    shield.classList.add('show');
+  };
+  resizeLeft.addEventListener('mousedown', e => onDown(notePanel, resizeLeft, e));
+  resizeRight.addEventListener('mousedown', e => onDown(aiPanel, resizeRight, e));
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    pendingX = e.clientX;
+    if (!rafId) {
+      rafId = requestAnimationFrame(() => {
+        const dx = pendingX - startX;
+        if (dragging === notePanel) {
+          notePanel.style.width = Math.max(260, Math.min(600, startW + dx)) + 'px';
+        } else {
+          aiPanel.style.width = Math.max(260, Math.min(600, startW - dx)) + 'px';
+        }
+        rafId = null;
+      });
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    resizeLeft.classList.remove('active');
+    resizeRight.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    shield.classList.remove('show');
+    dragging = null;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  });
+}
+
+/* ============================================================
+   BROWSER NAVIGATION
+   ============================================================ */
+function setupBrowserNav() {
+  const go = () => {
+    let u = urlInp.value.trim();
+    if (!u) return;
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    webFrame.src = u;
+    urlInp.value = u;
+    // Pre-fetch page content as soon as URL is navigated
+    prefetchPageContent();
+  };
+  urlInp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  $('#btnRef').onclick = () => { webFrame.src = webFrame.src; cachedPageUrl = ''; prefetchPageContent(); };
+  $('#btnBack').onclick = () => { try { webFrame.contentWindow.history.back(); } catch {} };
+  $('#btnFwd').onclick = () => { try { webFrame.contentWindow.history.forward(); } catch {} };
+  $('#toggleAI').onclick = () => { aiPanel.style.display = aiPanel.style.display === 'none' ? 'flex' : 'none'; };
+  $('#aiClose').onclick = () => { aiPanel.style.display = 'none'; };
+}
+
+/* ============================================================
+   AI CHAT — STREAMING
+   ============================================================ */
+function loadAISettings() {
+  const s = localStorage.getItem('boclaw_ai_cfg');
+  if (s) { try { const c = JSON.parse(s); $('#cfgBase').value = c.base || ''; $('#cfgKey').value = c.key || ''; $('#cfgModel').value = c.model || 'deepseek-chat'; } catch {} }
+  ['cfgBase','cfgKey','cfgModel'].forEach(id => {
+    $(`#${id}`).addEventListener('change', () => {
+      localStorage.setItem('boclaw_ai_cfg', JSON.stringify({ base: $('#cfgBase').value, key: $('#cfgKey').value, model: $('#cfgModel').value }));
+    });
+  });
+}
+
+function setupAIChat() {
+  chatInp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAI(); } });
+  $('#sendBtn').onclick = sendAI;
+}
+
+function addChatMsg(role, html) {
+  const isUser = role === 'user';
+  const d = document.createElement('div');
+  d.className = 'ai-msg flex gap-2 ' + (isUser ? 'justify-end' : '');
+  d.innerHTML = isUser
+    ? `<div class="max-w-[85%] text-[12.5px] leading-relaxed text-white bg-indigo-600 rounded-xl px-3 py-2">${html}</div>`
+    : `<div class="w-6 h-6 rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-[10px] shrink-0">🤖</div>
+       <div class="flex-1 text-[12.5px] leading-relaxed text-slate-700 bg-slate-50 rounded-lg p-3 ai-msg-content">${html}</div>`;
+  chatArea.appendChild(d);
+  chatArea.scrollTop = chatArea.scrollHeight;
+  return d;
+}
+
+async function sendAI(overrideText) {
+  let text = overrideText || chatInp.value.trim();
+  if (!text || aiStreaming) return;
+  chatInp.value = '';
+  chatInp.style.height = 'auto';
+  const base = $('#cfgBase').value.trim();
+  const key = $('#cfgKey').value.trim();
+  const model = $('#cfgModel').value.trim();
+  if (!key) { addChatMsg('assistant', '⚠️ 请先在 ⚙️ API 设置 中配置密钥'); return; }
+
+  const currentUrl = urlInp.value.trim();
+  const needsPageContent = currentUrl && !text.includes('【网页内容】');
+
+  // Fast path: if page content is already cached, inject it synchronously
+  let pageContentReady = false;
+  if (needsPageContent) {
+    if (cachedPageUrl === currentUrl && cachedPageContent) {
+      text = `【当前浏览网页：${currentUrl}】\n【网页内容】\n${cachedPageContent}\n\n---\n${text}`;
+      pageContentReady = true;
+    } else {
+      // Always tell AI the URL even if content not yet fetched
+      text = `【当前浏览网页：${currentUrl}】\n\n${text}`;
+    }
+  }
+
+  aiMessages.push({ role: 'user', content: text });
+  addChatMsg('user', esc(text.length > 200 ? text.slice(0, 200) + '…' : text));
+  aiStreaming = true;
+  const typing = addChatMsg('assistant', '<span class="tdot"><span>●</span><span>●</span><span>●</span></span>');
+  const contentEl = typing.querySelector('.ai-msg-content');
+
+  // If page content not ready yet, start fetching in parallel while connecting to AI
+  let pageFetchPromise = null;
+  if (needsPageContent && !pageContentReady) {
+    contentEl.innerHTML = '<span style="color:var(--text-muted)">📡 正在读取网页内容…</span>';
+    pageFetchPromise = fetchPageContent(currentUrl);
+  }
+
+  try {
+    // Connect to AI stream immediately
+    const res = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({ model, messages: aiMessages, stream: true })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    // If page content wasn't ready, wait for it then re-send with full context
+    if (pageFetchPromise) {
+      const pageContent = await pageFetchPromise;
+      if (pageContent) {
+        // Update the user message with full context (URL was already included above)
+        const fullText = `【当前浏览网页：${currentUrl}】\n【网页内容】\n${pageContent}\n\n---\n${text}`;
+        aiMessages[aiMessages.length - 1].content = fullText;
+        // Abort current stream and start a new one with full context
+        res.body.cancel();
+        contentEl.innerHTML = '<span style="color:var(--text-muted)">📄 网页内容已获取，正在生成摘要…</span>';
+        const res2 = await fetch(`${base}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+          body: JSON.stringify({ model, messages: aiMessages, stream: true })
+        });
+        if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
+        await consumeStream(res2, contentEl);
+      } else {
+        // Page fetch failed, continue with original stream (no page content)
+        contentEl.innerHTML = '<span style="color:var(--text-muted)">⚠️ 无法读取网页，基于已有信息回答…</span>';
+        await consumeStream(res, contentEl);
+      }
+    } else {
+      // Page content was already cached, stream directly
+      await consumeStream(res, contentEl);
+    }
+  } catch (err) {
+    contentEl.innerHTML = `❌ 请求失败: ${esc(err.message)}`;
+    aiMessages.pop();
+  }
+  aiStreaming = false;
+}
+
+async function consumeStream(res, contentEl) {
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', full = '';
+  contentEl.innerHTML = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const l of lines) {
+      const m = l.match(/^data:\s*(.+)/);
+      if (!m) continue;
+      if (m[1].trim() === '[DONE]') break;
+      try {
+        const j = JSON.parse(m[1]);
+        const t = j.choices?.[0]?.delta?.content || '';
+        if (t) { full += t; contentEl.innerHTML = md(full); chatArea.scrollTop = chatArea.scrollHeight; }
+      } catch {}
+    }
+  }
+  if (!full) contentEl.innerHTML = '（空回复）';
+  aiMessages.push({ role: 'assistant', content: full });
+}
+
+/* ============================================================
+   SELECTION POPUP — WEB PAGE TEXT
+   ============================================================ */
+function setupSelectionPopup() {
+  document.addEventListener('mouseup', e => {
+    setTimeout(() => {
+      if (selPop.contains(e.target)) return;
+      const sel = window.getSelection();
+      if (sel.isCollapsed || editor.contains(sel.anchorNode)) { selPop.classList.add('hidden'); return; }
+      const text = sel.toString().trim();
+      if (!text || text.length < 2) { selPop.classList.add('hidden'); return; }
+      // Position near mouse cursor
+      selPop.style.top = `${e.clientY + 8}px`;
+      selPop.style.left = `${e.clientX}px`;
+      selPop.style.transform = 'translate(-50%, 0)';
+      selPop.classList.remove('hidden');
+      selPop._text = text;
+    }, 10);
+  });
+
+  selPop.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', async () => {
+      const act = b.dataset.act;
+      const text = selPop._text || '';
+      selPop.classList.add('hidden');
+      window.getSelection().removeAllRanges();
+      if (act === 'ask') sendAI(`请基于你的知识回答以下问题：\n\n${text}`);
+      else if (act === 'explain') sendAI(`请用简洁中文解释以下内容的含义：\n\n${text}`);
+      else if (act === 'translate') sendAI(`请将以下内容翻译成中文（如已是中文则翻译成英文）：\n\n${text}`);
+      else if (act === 'note') {
+        saveCurrentEditorState();
+        const n = { id: Date.now().toString(), title: '网页摘录', category: '摘录', content: `<blockquote>${esc(text)}</blockquote>`, annotations: [], updatedAt: Date.now() };
+        notes.unshift(n);
+        persist();
+        toast('已存为新笔记');
+      }
+    });
+  });
+
+  document.addEventListener('mousedown', e => {
+    if (!selPop.contains(e.target)) selPop.classList.add('hidden');
+  });
+}
+
+/* ============================================================
+   NOTE OVERLAY — ALL NOTES LIST
+   ============================================================ */
+function setupOverlay() {
+  $('#btnOpenNoteList').onclick = openNoteOverlay;
+  $('#overlayCloseBtn').onclick = closeNoteOverlay;
+  $('#noteOverlayBg').onclick = closeNoteOverlay;
+  $('#overlayAddBtn').onclick = () => { addNote(); closeNoteOverlay(); };
+  // Import / Export buttons in both note panel header and overlay
+  $('#btnImport').onclick = importNotes;
+  $('#btnExport').onclick = exportNotes;
+  $('#overlayImportBtn').onclick = importNotes;
+  $('#overlayExportBtn').onclick = exportNotes;
+}
+
+function openNoteOverlay() {
+  renderNoteListOverlay();
+  noteOverlay.classList.add('show');
+}
+
+function closeNoteOverlay() {
+  noteOverlay.classList.remove('show');
+}
+
+function renderNoteListOverlay() {
+  noteListContainer.innerHTML = '';
+  if (!notes.length) {
+    noteListContainer.innerHTML = '<div style="color:var(--text-muted)" class="text-center text-xs py-8">暂无笔记</div>';
+    return;
+  }
+  notes.forEach(n => {
+    const active = n.id === activeNoteId;
+    const d = document.createElement('div');
+    d.className = `group flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all ${active ? 'bg-indigo-50/90 text-indigo-900 font-medium border border-indigo-100 shadow-sm' : ''}`;
+    if (!active) d.style.cssText = 'color:var(--text-secondary)';
+    d.onmouseenter = () => { if (!active) d.style.background = 'var(--bg-hover)'; };
+    d.onmouseleave = () => { if (!active) d.style.background = ''; };
+    d.onclick = () => switchNote(n.id);
+    d.innerHTML = `
+      <div class="truncate pr-2">
+        <p class="truncate text-sm font-medium">${esc(n.title || '无标题')}</p>
+        <span style="color:var(--text-muted)" class="text-[10px]">${esc(n.category || '未分类')} · ${new Date(n.updatedAt).toLocaleDateString('zh-CN')}</span>
+      </div>
+      <button onclick="deleteNote('${n.id}',event)" class="opacity-0 group-hover:opacity-100 p-1 rounded transition-opacity" style="color:var(--text-muted)"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+    `;
+    d.querySelector('button').onmouseenter = function(){ this.style.color='#ef4444'; };
+    d.querySelector('button').onmouseleave = function(){ this.style.color='var(--text-muted)'; };
+    noteListContainer.appendChild(d);
+  });
+  lucide.createIcons();
+}
+
+/* ============================================================
+   WEB PAGE CONTENT EXTRACTION (via CORS proxy)
+   ============================================================ */
+let cachedPageContent = '';
+let cachedPageUrl = '';
+let pageContentLoading = null; // Promise for in-flight fetch
+
+async function fetchPageContent(url) {
+  if (!url) return '';
+  // If already cached for this URL, return it
+  if (cachedPageUrl === url && cachedPageContent) return cachedPageContent;
+  // If a fetch for this URL is already in progress, wait for it
+  if (pageContentLoading && pageContentLoading._url === url) return pageContentLoading;
+  // Start a new fetch
+  const promise = _doFetchPageContent(url);
+  promise._url = url;
+  pageContentLoading = promise;
+  try {
+    return await promise;
+  } finally {
+    if (pageContentLoading === promise) pageContentLoading = null;
+  }
+}
+
+async function _doFetchPageContent(url) {
+  // Race all proxies in parallel — first valid response wins
+  const proxies = [
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+  ];
+  const results = await Promise.allSettled(
+    proxies.map(mkProxy => (async () => {
+      const proxyUrl = mkProxy(url);
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
+      const text = extractTextFromHtml(html);
+      if (text && text.length > 50) return text;
+      throw new Error('content too short');
+    })())
+  );
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value) {
+      cachedPageContent = r.value.slice(0, 8000);
+      cachedPageUrl = url;
+      return cachedPageContent;
+    }
+  }
+  return '';
+}
+
+// Pre-fetch: start loading page content whenever URL changes
+function prefetchPageContent() {
+  const url = urlInp.value.trim();
+  if (!url || (cachedPageUrl === url && cachedPageContent)) return;
+  fetchPageContent(url); // fire and forget — result gets cached
+}
+
+function extractTextFromHtml(html) {
+  // Remove script/style tags, then extract text
+  let cleaned = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+  cleaned = cleaned.replace(/<style[\s\S]*?<\/style>/gi, '');
+  cleaned = cleaned.replace(/<nav[\s\S]*?<\/nav>/gi, '');
+  cleaned = cleaned.replace(/<footer[\s\S]*?<\/footer>/gi, '');
+  cleaned = cleaned.replace(/<header[\s\S]*?<\/header>/gi, '');
+  // Try to find main content area
+  const mainMatch = cleaned.match(/<main[\s\S]*?>([\s\S]*?)<\/main>/i) ||
+                    cleaned.match(/<article[\s\S]*?>([\s\S]*?)<\/article>/i) ||
+                    cleaned.match(/<div[^>]*class="[^"]*content[^"]*"[\s\S]*?>([\s\S]*?)<\/div>/i);
+  if (mainMatch) cleaned = mainMatch[1];
+  // Strip remaining tags
+  cleaned = cleaned.replace(/<[^>]+>/g, ' ');
+  // Clean up whitespace
+  cleaned = cleaned.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  return cleaned;
+}
+
+/* ============================================================
+   QUICK ACTIONS
+   ============================================================ */
+function setupQuickActions() {
+  $$('.qa-btn').forEach(b => {
+    b.onclick = async () => {
+      const p = b.dataset.p;
+      if (p === 'save-note') {
+        const lastAssistant = [...aiMessages].reverse().find(m => m.role === 'assistant');
+        if (!lastAssistant) { toast('暂无 AI 回复可存'); return; }
+        saveCurrentEditorState();
+        const n = { id: Date.now().toString(), title: 'AI 回复 · ' + new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}), category: 'AI', content: md(lastAssistant.content).replace(/<pre.*?<\/pre>/gs, m => `<pre>${m}</pre>`), annotations: [], updatedAt: Date.now() };
+        notes.unshift(n);
+        persist();
+        toast('已存为新笔记');
+      } else if (p === 'summarize-page') {
+        // One-click: auto-fetch page + summarize with high-quality prompt
+        const url = urlInp.value.trim();
+        if (!url) { toast('请先在浏览器中打开一个网页'); return; }
+        // Check if content is already pre-fetched
+        if (cachedPageUrl === url && cachedPageContent) {
+          toast('📄 网页内容已就绪，正在生成摘要…');
+        } else {
+          toast('📡 正在读取网页…');
+        }
+        const summaryPrompt = `你是一位专业的内容分析助手。请对当前浏览的网页进行全面、结构化的总结。
+
+当前浏览的网址：${url}
+
+请按以下格式输出总结：
+
+## 📋 网页概要
+用1-2句话概括该网页的核心主题和目的。
+
+## 🔑 关键信息
+提取网页中最重要的事实、数据或观点，每条独立列出（3-8条）：
+- 要点1
+- 要点2
+- ...
+
+## 💡 核心见解
+基于网页内容，给出1-2条深层洞见或值得注意的细节。
+
+## 🏷️ 主题标签
+用3-5个关键词标签概括该网页的核心主题。
+
+要求：
+- 保持客观，忠实于原文内容，不添加原文没有的信息
+- 语言简洁精炼，避免冗余描述
+- 如有数据、数字、专有名词，确保准确引用
+- 如果网页内容无法读取，请说明原因并尝试根据网址推断页面可能的内容`;
+        sendAI(summaryPrompt);
+      } else {
+        sendAI(p);
+      }
+    };
+  });
+}
+
+/* ============================================================
+   IMPORT / EXPORT NOTES
+   ============================================================ */
+function exportNotes() {
+  saveCurrentEditorState();
+  const data = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    notes: notes
+  };
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `boclaw-notes-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`已导出 ${notes.length} 篇笔记`);
+}
+
+function importNotes() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      // Support both bare array and wrapped object
+      const imported = Array.isArray(data) ? data : (data.notes || []);
+      if (!imported.length) { toast('文件中没有笔记数据'); return; }
+      // Validate basic structure
+      const valid = imported.filter(n => n.id && (n.title || n.content));
+      if (!valid.length) { toast('文件格式不正确'); return; }
+      // Assign new IDs to avoid collisions, ensure annotations array
+      const withNewIds = valid.map(n => ({
+        ...n,
+        id: n.id.startsWith('import-') ? n.id : 'import-' + n.id,
+        annotations: n.annotations || [],
+        updatedAt: n.updatedAt || Date.now()
+      }));
+      saveCurrentEditorState();
+      notes = [...withNewIds, ...notes];
+      persist();
+      loadActiveNote();
+      renderNoteListOverlay();
+      toast(`已导入 ${withNewIds.length} 篇笔记`);
+    } catch (err) {
+      toast('导入失败: ' + err.message);
+    }
+  };
+  input.click();
+}
+
+/* ============================================================
+   THEME — LIGHT / DARK / SEPIA
+   ============================================================ */
+function setTheme(t) {
+  document.body.setAttribute('data-theme', t);
+  localStorage.setItem('boclaw_theme', t);
+  $$('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.t === t));
+}
+
+function loadTheme() {
+  const saved = localStorage.getItem('boclaw_theme') || 'light';
+  setTheme(saved);
+}
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+function md(text) {
+  if (!text) return '';
+  let h = text
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^\- (.+)$/gm, '<li>$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  h = '<p>' + h + '</p>';
+  h = h.replace(/<p><\/p>/g, '');
+  h = h.replace(/<p>(<h[1-3]>)/g, '$1');
+  h = h.replace(/(<\/h[1-3]>)<\/p>/g, '$1');
+  h = h.replace(/<p>(<pre>)/g, '$1');
+  h = h.replace(/(<\/pre>)<\/p>/g, '$1');
+  h = h.replace(/<p>(<li>)/g, '<ul>$1');
+  h = h.replace(/(<\/li>)<\/p>/g, '$1</ul>');
+  return h;
+}
+
+function toast(msg) {
+  const d = document.createElement('div');
+  d.className = 'toast';
+  d.textContent = msg;
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), 2200);
+}
+
+/* ---------- BOOT ---------- */
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
