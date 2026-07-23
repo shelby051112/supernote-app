@@ -37,7 +37,7 @@
 ## 🚀 使用方式
 
 ### 在线访问
-👉 [GitHub Pages 演示](https://你的用户名.github.io/supernote-app/)
+👉 [GitHub Pages 演示](https://shelby051112.github.io/supernote-app/)
 
 ### 本地使用
 1. 下载 `index.html`
