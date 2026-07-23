@@ -6,6 +6,13 @@
 <title>SuperNote — 笔记 · 浏览 · AI</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
+<!-- CDN libraries loaded on-demand via loadScript() -->
+<!-- mammoth.js: .docx → HTML parsing -->
+<!-- pdf.js: .pdf → text extraction -->
+<!-- html-docx-js: HTML → .docx export -->
+<!-- jsPDF + html2canvas: HTML → PDF export -->
+<!-- xlsx (SheetJS): .xlsx export -->
+<!-- PptxGenJS: .pptx export -->
 <script>
 tailwind.config={theme:{extend:{colors:{brand:{50:'#eef2ff',100:'#e0e7ff',500:'#6366f1',600:'#4f46e5',700:'#4338ca'}}}}}
 </script>
@@ -101,6 +108,23 @@ mark.hl-blue{background:#bae6fd;padding:1px 4px;border-radius:3px;border-bottom:
 /* ===== TOAST ===== */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:8px 20px;background:#1e293b;color:#f1f5f9;border-radius:10px;font-size:13px;z-index:300;animation:msg-in .15s ease-out;pointer-events:none}
 
+/* ===== EXPORT DROPDOWN MENU ===== */
+.export-dropdown{position:relative;display:inline-flex}
+.export-menu{position:absolute;top:100%;right:0;margin-top:6px;min-width:180px;background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.12);z-index:80;padding:6px;display:none}
+.export-menu.show{display:block}
+.export-menu button{display:flex;align-items:center;gap:8px;width:100%;padding:8px 12px;border:none;background:none;cursor:pointer;border-radius:8px;font-size:12px;color:var(--text-secondary);transition:background .15s}
+.export-menu button:hover{background:var(--bg-hover)}
+.export-menu button .em-icon{width:20px;text-align:center;font-size:14px}
+.export-menu button .em-label{font-weight:500}
+.export-menu button .em-desc{font-size:10px;color:var(--text-muted);margin-left:auto}
+
+/* ===== RECENTLY DELETED OVERLAY ===== */
+.deleted-overlay{position:fixed;inset:0;z-index:50;display:none}
+.deleted-overlay.show{display:flex}
+.deleted-overlay .backdrop{position:absolute;inset:0;background:var(--overlay-bg)}
+.deleted-overlay .panel{position:absolute;right:0;top:0;bottom:0;width:360px;background:var(--bg-panel);border-left:1px solid var(--border);box-shadow:-4px 0 24px rgba(0,0,0,.1);display:flex;flex-direction:column;animation:slide-in-r .2s ease-out}
+@keyframes slide-in-r{from{transform:translateX(100%)}to{transform:translateX(0)}}
+
 /* ===== TOOLBAR WRAP ===== */
 #formatToolbar{flex-wrap:wrap}
 
@@ -152,17 +176,29 @@ mark.hl-blue{background:#bae6fd;padding:1px 4px;border-radius:3px;border-bottom:
         <span style="color:var(--text-muted)" class="text-xs font-semibold tracking-wider uppercase">当前笔记</span>
       </div>
       <div class="flex items-center gap-1">
-        <button id="btnImport" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-80 transition-colors" title="导入笔记">
+        <button id="btnImport" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-80 transition-colors" title="导入文件">
           <i data-lucide="upload" class="w-4 h-4"></i>
         </button>
-        <button id="btnExport" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-80 transition-colors" title="导出笔记">
-          <i data-lucide="download" class="w-4 h-4"></i>
-        </button>
+        <div class="export-dropdown">
+          <button id="btnExport" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-80 transition-colors" title="导出笔记">
+            <i data-lucide="download" class="w-4 h-4"></i>
+          </button>
+          <div class="export-menu" id="exportMenu">
+            <button onclick="exportNotes('json')"><span class="em-icon">{ }</span><span class="em-label">JSON</span><span class="em-desc">全部笔记</span></button>
+            <button onclick="exportNotes('docx')"><span class="em-icon">📄</span><span class="em-label">Word</span><span class="em-desc">.docx</span></button>
+            <button onclick="exportNotes('pdf')"><span class="em-icon">📕</span><span class="em-label">PDF</span><span class="em-desc">.pdf</span></button>
+            <button onclick="exportNotes('xlsx')"><span class="em-icon">📗</span><span class="em-label">Excel</span><span class="em-desc">.xlsx</span></button>
+            <button onclick="exportNotes('pptx')"><span class="em-icon">📊</span><span class="em-label">PPT</span><span class="em-desc">.pptx</span></button>
+          </div>
+        </div>
         <button id="btnAddNote" class="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors" title="新建笔记">
           <i data-lucide="plus" class="w-4 h-4"></i>
         </button>
         <button id="btnDeleteNote" class="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="删除笔记">
           <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+        <button id="btnRecentlyDeleted" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-80 transition-colors" title="最近删除">
+          <i data-lucide="trash" class="w-4 h-4"></i>
         </button>
       </div>
     </div>
@@ -292,8 +328,17 @@ mark.hl-blue{background:#bae6fd;padding:1px 4px;border-radius:3px;border-bottom:
     <div style="border-bottom:1px solid var(--border-light)" class="px-4 py-3 flex items-center justify-between">
       <span style="color:var(--text-primary)" class="text-sm font-semibold flex items-center gap-2"><i data-lucide="notebook-pen" class="w-4 h-4 text-indigo-500"></i> 全部笔记</span>
       <div class="flex items-center gap-1">
-        <button id="overlayImportBtn" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-70 transition-colors" title="导入笔记"><i data-lucide="upload" class="w-4 h-4"></i></button>
-        <button id="overlayExportBtn" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-70 transition-colors" title="导出笔记"><i data-lucide="download" class="w-4 h-4"></i></button>
+        <button id="overlayImportBtn" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-70 transition-colors" title="导入文件"><i data-lucide="upload" class="w-4 h-4"></i></button>
+        <div class="export-dropdown">
+          <button id="overlayExportBtn" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-70 transition-colors" title="导出笔记"><i data-lucide="download" class="w-4 h-4"></i></button>
+          <div class="export-menu" id="exportMenu2">
+            <button onclick="exportNotes('json')"><span class="em-icon">{ }</span><span class="em-label">JSON</span><span class="em-desc">全部笔记</span></button>
+            <button onclick="exportNotes('docx')"><span class="em-icon">📄</span><span class="em-label">Word</span><span class="em-desc">.docx</span></button>
+            <button onclick="exportNotes('pdf')"><span class="em-icon">📕</span><span class="em-label">PDF</span><span class="em-desc">.pdf</span></button>
+            <button onclick="exportNotes('xlsx')"><span class="em-icon">📗</span><span class="em-label">Excel</span><span class="em-desc">.xlsx</span></button>
+            <button onclick="exportNotes('pptx')"><span class="em-icon">📊</span><span class="em-label">PPT</span><span class="em-desc">.pptx</span></button>
+          </div>
+        </div>
         <button id="overlayAddBtn" class="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors" title="新建"><i data-lucide="plus" class="w-4 h-4"></i></button>
         <button id="overlayCloseBtn" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-70"><i data-lucide="x" class="w-4 h-4"></i></button>
       </div>
@@ -336,6 +381,24 @@ mark.hl-blue{background:#bae6fd;padding:1px 4px;border-radius:3px;border-bottom:
   <div id="annPopupContent" class="space-y-2"></div>
 </div>
 
+<!-- ===== RECENTLY DELETED OVERLAY ===== -->
+<div class="deleted-overlay" id="deletedOverlay">
+  <div class="backdrop" id="deletedOverlayBg"></div>
+  <div class="panel">
+    <div style="border-bottom:1px solid var(--border-light)" class="px-4 py-3 flex items-center justify-between">
+      <span style="color:var(--text-primary)" class="text-sm font-semibold flex items-center gap-2"><i data-lucide="trash" class="w-4 h-4 text-slate-500"></i> 最近删除</span>
+      <div class="flex items-center gap-1">
+        <button id="clearAllDeletedBtn" class="text-[10px] px-2 py-1 rounded-lg text-red-500 hover:bg-red-50 transition-colors">清空</button>
+        <button id="deletedCloseBtn" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:opacity-70"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+    </div>
+    <div class="px-4 py-2" style="background:var(--bg-input)">
+      <span style="color:var(--text-muted)" class="text-[10px]">删除的笔记保留 30 天，可随时恢复</span>
+    </div>
+    <div id="deletedListContainer" class="flex-1 overflow-y-auto p-3 space-y-1"></div>
+  </div>
+</div>
+
 <script>
 // ============================================================
 // BoClaw — 笔记 · 浏览 · AI  (Full Application Logic)
@@ -369,6 +432,352 @@ const COLOR_CONFIG = {
   pink:   { label: '要点', border: 'border-pink-300', bg: 'bg-pink-100', text: 'text-pink-800', mark: 'hl-pink' },
   blue:   { label: '例证', border: 'border-sky-300', bg: 'bg-sky-100', text: 'text-sky-800', mark: 'hl-blue' }
 };
+
+/* ---------- INDEXED DB STORAGE LAYER ---------- */
+const DB_NAME = 'SuperNoteDB';
+const DB_VERSION = 1;
+let _db = null;
+
+function openDB() {
+  if (_db) return Promise.resolve(_db);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('notes')) {
+        db.createObjectStore('notes', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('deleted')) {
+        db.createObjectStore('deleted', { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => { _db = req.result; resolve(_db); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function dbGetAllNotes() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('notes', 'readonly');
+    const store = tx.objectStore('notes');
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function dbSaveAllNotes(allNotes) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('notes', 'readwrite');
+    const store = tx.objectStore('notes');
+    // Clear then put all
+    store.clear();
+    for (const n of allNotes) {
+      store.put(n);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function dbSaveNote(note) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('notes', 'readwrite');
+    tx.objectStore('notes').put(note);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function dbDeleteNote(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('notes', 'readwrite');
+    tx.objectStore('notes').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function dbGetAllDeleted() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('deleted', 'readonly');
+    const req = tx.objectStore('deleted').getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function dbSaveDeleted(note) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('deleted', 'readwrite');
+    tx.objectStore('deleted').put(note);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function dbDeleteDeleted(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('deleted', 'readwrite');
+    tx.objectStore('deleted').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function dbClearDeleted() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('deleted', 'readwrite');
+    tx.objectStore('deleted').clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/* ---------- DYNAMIC SCRIPT LOADER ---------- */
+const LOADED_SCRIPTS = {};
+function loadScript(url) {
+  if (LOADED_SCRIPTS[url]) return LOADED_SCRIPTS[url];
+  LOADED_SCRIPTS[url] = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load: ' + url));
+    document.head.appendChild(s);
+  });
+  return LOADED_SCRIPTS[url];
+}
+
+/* ---------- FILE PARSING FUNCTIONS ---------- */
+async function parseDocx(arrayBuffer, fileName, fileSize) {
+  await loadScript('https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js');
+  // Convert images to base64 inline — preserves all embedded images
+  const imageIndex = { v: 0 };
+  const convertImage = mammoth.images.imgElement(function(image) {
+    return image.read("base64then").then(function(imageBuffer) {
+      imageIndex.v++;
+      const ext = image.contentType.split('/')[1] || 'png';
+      return { src: "data:" + image.contentType + ";base64," + imageBuffer };
+    });
+  });
+  const result = await mammoth.convertToHtml({ arrayBuffer }, { convertImage });
+  const card = buildAttachmentCard(fileName, fileSize, null, 'Word文档', '📄');
+  return card + result.value;
+}
+
+async function parsePdf(arrayBuffer, fileName, fileSize) {
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  if (!window.pdfjsLib._workerReady) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    window.pdfjsLib._workerReady = true;
+  }
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let htmlParts = [];
+  const scale = 2; // 2x for crisp rendering
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale });
+    // Render page to canvas → image (preserves exact layout, no garbled text)
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const imgDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    htmlParts.push(`<h2 style="margin-top:16px;border-bottom:1px solid var(--border);padding-bottom:4px">第 ${i} 页</h2>`);
+    htmlParts.push(`<img src="${imgDataUrl}" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;margin:4px 0" />`);
+    // Also extract selectable text (invisible overlay for search/selection)
+    const textContent = await page.getTextContent();
+    const textLines = groupTextItemsByLine(textContent.items);
+    if (textLines.length) {
+      htmlParts.push(`<div class="pdf-text-layer" style="font-size:12px;color:var(--text-secondary);margin:4px 0;padding:8px;background:var(--bg-input);border-radius:6px;white-space:pre-wrap;line-height:1.6">`);
+      for (const line of textLines) {
+        htmlParts.push(esc(line) + '\n');
+      }
+      htmlParts.push('</div>');
+    }
+  }
+  const card = buildAttachmentCard(fileName, fileSize, null, 'PDF文档', '📕');
+  const tip = '<p style="color:var(--text-muted);font-size:12px;font-style:italic;border-left:3px solid var(--border);padding-left:8px;margin:8px 0">PDF 以图片形式展示，保留原始排版；文字区域可选中复制</p>';
+  return card + tip + htmlParts.join('');
+}
+
+function groupTextItemsByLine(items) {
+  const lines = [];
+  let currentY = null;
+  let currentLine = '';
+  for (const item of items) {
+    if (item.str === undefined) continue;
+    const y = item.transform ? item.transform[5] : 0;
+    if (currentY === null || Math.abs(y - currentY) > 3) {
+      if (currentLine.trim()) lines.push(currentLine.trim());
+      currentLine = item.str;
+      currentY = y;
+    } else {
+      currentLine += item.str;
+    }
+  }
+  if (currentLine.trim()) lines.push(currentLine.trim());
+  return lines;
+}
+
+function buildAttachmentCard(fileName, fileSize, fileData, typeLabel, icon) {
+  const downloadBtn = fileData
+    ? `<a href="${fileData}" download="${esc(fileName)}" style="display:inline-block;margin-top:10px;padding:5px 14px;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:500">⬇ 下载原文件</a>`
+    : '';
+  return `<div class="file-attachment" style="padding:14px;border:1px dashed var(--border);border-radius:12px;text-align:center;margin:8px 0;background:var(--bg-input)">
+    <div style="font-size:36px;margin-bottom:4px">${icon}</div>
+    <div style="font-weight:600;margin-bottom:2px;color:var(--text-primary)">${esc(fileName)}</div>
+    <div style="font-size:11px;color:var(--text-muted)">${typeLabel} · ${formatFileSize(fileSize)}</div>
+    ${downloadBtn}
+  </div>`;
+}
+
+function checkStorageCapacity(estimatedBytes) {
+  // IndexedDB typically supports hundreds of MB to several GB
+  // We set a practical limit of 500MB
+  try {
+    // Simple check — if navigator.storage is available, use it
+    if (navigator.storage && navigator.storage.estimate) {
+      // Async check — for now just allow, the persist() will catch quota errors
+      return true;
+    }
+    return true;
+  } catch { return true; }
+}
+
+/* ---------- EXPORT FUNCTIONS ---------- */
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function htmlToPlainText(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return tmp.textContent || tmp.innerText || '';
+}
+
+async function exportAsDocx() {
+  await loadScript('https://unpkg.com/html-docx-js@0.3.1/dist/html-docx.js');
+  const html = `<html><head><meta charset="utf-8"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.8}h1{font-size:22px;font-weight:bold}h2{font-size:18px;font-weight:bold}p{margin:6px 0}blockquote{border-left:3px solid #ccc;padding-left:10px;color:#666;font-style:italic}</style></head><body>${editor.innerHTML}</body></html>`;
+  const blob = htmlDocx.asBlob(html);
+  const title = noteTitleInput.value.trim() || '未命名笔记';
+  downloadBlob(blob, `${title}.docx`);
+  toast('已导出为 Word 文档');
+}
+
+async function exportAsPDF() {
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+  // Create a temporary container for rendering
+  const container = document.createElement('div');
+  container.style.cssText = 'position:absolute;left:-9999px;top:0;width:700px;padding:32px;background:#fff;color:#333;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.8';
+  container.innerHTML = editor.innerHTML;
+  document.body.appendChild(container);
+  try {
+    const canvas = await html2canvas(container, { scale: 2, useCORS: true });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const imgWidth = 190;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 10;
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 10, position, imgWidth, imgHeight);
+    heightLeft -= 277;
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight + 10;
+      pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 10, position, imgWidth, imgHeight);
+      heightLeft -= 277;
+    }
+    const title = noteTitleInput.value.trim() || '未命名笔记';
+    pdf.save(`${title}.pdf`);
+    toast('已导出为 PDF');
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
+async function exportAsXLSX() {
+  await loadScript('https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js');
+  const XLSX = window.XLSX;
+  const wb = XLSX.utils.book_new();
+  // Try to find tables in editor content
+  const tables = editor.querySelectorAll('table');
+  if (tables.length > 0) {
+    tables.forEach((tbl, i) => {
+      const ws = XLSX.utils.table_to_sheet(tbl);
+      XLSX.utils.book_append_sheet(wb, ws, `表格${i + 1}`);
+    });
+  } else {
+    // Convert paragraphs to rows
+    const text = htmlToPlainText(editor.innerHTML);
+    const rows = text.split('\n').filter(l => l.trim());
+    const wsData = rows.map(r => [r]);
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = [{ wch: 80 }];
+    XLSX.utils.book_append_sheet(wb, ws, '笔记内容');
+  }
+  const title = noteTitleInput.value.trim() || '未命名笔记';
+  XLSX.writeFile(wb, `${title}.xlsx`);
+  toast('已导出为 Excel');
+}
+
+async function exportAsPPTX() {
+  await loadScript('https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js');
+  const pptx = new PptxGenJS();
+  pptx.layout = 'LAYOUT_16x9';
+  // Split content by headings into slides
+  const html = editor.innerHTML;
+  const sections = html.split(/<(h[1-2])[^>]*>/i);
+  // First section (before any heading) as title slide
+  let titleText = noteTitleInput.value.trim() || '未命名笔记';
+  let slide = pptx.addSlide();
+  slide.addText(titleText, { x: 0.8, y: 1.2, w: '80%', fontSize: 32, bold: true, color: '333333' });
+  const firstContent = sections[0] ? htmlToPlainText(sections[0]).trim() : '';
+  if (firstContent) {
+    slide.addText(firstContent.slice(0, 200), { x: 0.8, y: 2.5, w: '80%', fontSize: 14, color: '666666' });
+  }
+  // Subsequent sections as content slides
+  for (let i = 1; i < sections.length; i += 2) {
+    const tag = sections[i]; // h1 or h2
+    const content = sections[i + 1] ? htmlToPlainText(sections[i + 1]).trim() : '';
+    if (!content) continue;
+    slide = pptx.addSlide();
+    const heading = htmlToPlainText('<' + tag + '>' + content.split('</')[0]).trim().slice(0, 60);
+    const bodyText = content.slice(0, 500);
+    slide.addText(heading || `幻灯片 ${(i + 1) / 2 + 1}`, { x: 0.8, y: 0.5, w: '80%', fontSize: 24, bold: true, color: '333333' });
+    const bullets = bodyText.split('\n').filter(l => l.trim()).map(l => ({ text: l.trim(), options: { fontSize: 14, color: '444444', bullet: true } }));
+    if (bullets.length) slide.addText(bullets, { x: 0.8, y: 1.5, w: '80%', h: 4 });
+  }
+  // If no headings found, put all content in one slide
+  if (sections.length <= 1) {
+    const allText = htmlToPlainText(editor.innerHTML).trim();
+    if (allText) {
+      const lines = allText.split('\n').filter(l => l.trim());
+      const bullets = lines.slice(0, 15).map(l => ({ text: l.trim().slice(0, 100), options: { fontSize: 14, color: '444444', bullet: true } }));
+      slide.addText(bullets, { x: 0.8, y: 1.5, w: '80%', h: 4 });
+    }
+  }
+  const title = noteTitleInput.value.trim() || '未命名笔记';
+  pptx.writeFile({ fileName: `${title}.pptx` });
+  toast('已导出为 PPT');
+}
 
 /* ---------- STATE ---------- */
 let notes = [];
@@ -407,8 +816,10 @@ const resizeLeft = $('#resizeLeft');
 const resizeRight = $('#resizeRight');
 
 /* ---------- INIT ---------- */
-function init() {
-  loadNotes();
+async function init() {
+  await loadNotes();
+  // Clean up expired deleted notes
+  await cleanupExpiredDeleted();
   activeNoteId = notes[0]?.id || null;
   loadActiveNote();
   renderAnnotations();
@@ -419,6 +830,7 @@ function init() {
   setupSelectionPopup();
   setupOverlay();
   setupQuickActions();
+  setupDeletedOverlay();
   loadAISettings();
   loadTheme();
   lucide.createIcons();
@@ -429,30 +841,61 @@ function init() {
 /* ============================================================
    NOTES — CRUD & PERSISTENCE
    ============================================================ */
-function loadNotes() {
-  const raw = localStorage.getItem('boclaw_notes');
-  if (raw) { try { notes = JSON.parse(raw); } catch { notes = structuredClone(DEFAULT_NOTES); } }
-  else notes = structuredClone(DEFAULT_NOTES);
+async function loadNotes() {
+  try {
+    const stored = await dbGetAllNotes();
+    if (stored && stored.length) {
+      notes = stored;
+    } else {
+      // Try migrating from localStorage on first IndexedDB use
+      const raw = localStorage.getItem('boclaw_notes');
+      if (raw) {
+        try {
+          notes = JSON.parse(raw);
+          await dbSaveAllNotes(notes);
+          localStorage.removeItem('boclaw_notes'); // free old storage
+          console.log('Migrated notes from localStorage to IndexedDB');
+        } catch { notes = structuredClone(DEFAULT_NOTES); }
+      } else {
+        notes = structuredClone(DEFAULT_NOTES);
+      }
+    }
+  } catch (err) {
+    console.error('IndexedDB load failed, falling back:', err);
+    const raw = localStorage.getItem('boclaw_notes');
+    if (raw) { try { notes = JSON.parse(raw); } catch { notes = structuredClone(DEFAULT_NOTES); } }
+    else notes = structuredClone(DEFAULT_NOTES);
+  }
 }
 
-function persist() {
-  localStorage.setItem('boclaw_notes', JSON.stringify(notes));
-  const st = $('#save-status');
-  if (st) { st.classList.remove('opacity-0'); clearTimeout(st._t); st._t = setTimeout(() => st.classList.add('opacity-[0.8]'), 1500); }
+async function persist() {
+  try {
+    await dbSaveAllNotes(notes);
+    const st = $('#save-status');
+    if (st) { st.classList.remove('opacity-0'); clearTimeout(st._t); st._t = setTimeout(() => st.classList.add('opacity-[0.8]'), 1500); }
+  } catch (e) {
+    if (e.name === 'QuotaExceededError') {
+      toast('⚠️ 存储空间不足，部分数据可能未保存');
+      console.warn('IndexedDB quota exceeded');
+    } else {
+      console.error('Persist error:', e);
+      toast('⚠️ 保存失败: ' + e.message);
+    }
+  }
 }
 
-function saveCurrentEditorState() {
+async function saveCurrentEditorState() {
   const n = notes.find(x => x.id === activeNoteId);
   if (!n) return;
   n.title = noteTitleInput.value.trim();
   n.content = editor.innerHTML;
   n.updatedAt = Date.now();
-  persist();
+  await persist();
 }
 
 function debounceSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveCurrentEditorState, 400);
+  saveTimer = setTimeout(() => saveCurrentEditorState().catch(e => console.error('debounceSave error:', e)), 400);
 }
 
 function loadActiveNote() {
@@ -468,8 +911,8 @@ function loadActiveNote() {
   renderAnnotations(n.annotations || []);
 }
 
-function addNote() {
-  saveCurrentEditorState();
+async function addNote() {
+  await saveCurrentEditorState();
   const n = {
     id: Date.now().toString(),
     title: '未命名笔记',
@@ -481,24 +924,30 @@ function addNote() {
   notes.unshift(n);
   activeNoteId = n.id;
   loadActiveNote();
-  persist();
+  await persist();
   renderNoteListOverlay();
   editor.focus();
 }
 
-function deleteNote(id, evt) {
+async function deleteNote(id, evt) {
   if (evt) evt.stopPropagation();
-  if (!confirm('确定要删除这篇笔记吗？')) return;
+  if (!confirm('确定要删除这篇笔记吗？删除后可在"最近删除"中恢复（保留30天）')) return;
+  const n = notes.find(x => x.id === id);
+  if (n) {
+    // Move to recently deleted
+    n.deletedAt = Date.now();
+    await dbSaveDeleted(n);
+  }
   notes = notes.filter(n => n.id !== id);
   if (activeNoteId === id) activeNoteId = notes[0]?.id || null;
   loadActiveNote();
-  persist();
+  await persist();
   renderNoteListOverlay();
 }
 
-function switchNote(id) {
+async function switchNote(id) {
   if (activeNoteId === id) return;
-  saveCurrentEditorState();
+  await saveCurrentEditorState();
   activeNoteId = id;
   loadActiveNote();
   closeNoteOverlay();
@@ -525,25 +974,101 @@ function setTempColor(c) {
 }
 
 function applyAnnotation() {
-  if (!savedRange) return;
-  const text = savedRange.toString().trim();
+  // Try to restore the editor selection first (mousedown on floatingMenu may have cleared it)
+  const sel = window.getSelection();
+  if (sel.isCollapsed && savedRange) {
+    sel.removeAllRanges();
+    sel.addRange(savedRange);
+  }
+
+  // Get the working range from current selection or savedRange
+  let range = null;
+  if (!sel.isCollapsed && editor.contains(sel.anchorNode)) {
+    range = sel.getRangeAt(0).cloneRange();
+  } else if (savedRange) {
+    range = savedRange.cloneRange();
+  }
+  if (!range) return;
+
+  const text = range.toString().trim();
   if (!text) return;
   const annId = 'ann-' + Date.now();
-  const mark = document.createElement('mark');
-  mark.className = 'hl-' + selectedColor;
-  mark.setAttribute('data-ann-id', annId);
-  try { savedRange.surroundContents(mark); } catch { document.execCommand('backColor', false, '#fef08a'); }
+
+  try {
+    // Case 1: selection within a single text node — use surroundContents (simplest, safest)
+    if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+      const mark = document.createElement('mark');
+      mark.className = 'hl-' + selectedColor;
+      mark.setAttribute('data-ann-id', annId);
+      range.surroundContents(mark);
+    } else {
+      // Case 2: cross-node selection — extract contents, then wrap each inline piece
+      const fragment = range.extractContents();
+      const wrapper = document.createElement('span');
+      wrapper.appendChild(fragment);
+
+      // Walk the extracted content and wrap each text node / inline element with <mark>
+      const markList = [];
+      wrapTextNodesWithMark(wrapper, annId, selectedColor, markList);
+
+      // Insert the wrapped content back
+      range.insertNode(wrapper);
+      // Unwrap the temporary <span> — leave only the <mark>s
+      while (wrapper.firstChild) wrapper.parentNode.insertBefore(wrapper.firstChild, wrapper);
+      wrapper.remove();
+    }
+  } catch {
+    // Fallback: use execCommand as last resort
+    document.execCommand('backColor', false, '#fef08a');
+  }
   const comment = commentInput.value.trim();
   const n = notes.find(x => x.id === activeNoteId);
   if (n) {
     if (!n.annotations) n.annotations = [];
     n.annotations.push({ id: annId, text, color: selectedColor, comment, createdAt: Date.now() });
     n.content = editor.innerHTML;
-    persist();
+    persist().catch(e => console.error('persist error:', e));
     renderAnnotations(n.annotations);
   }
   window.getSelection().removeAllRanges();
   hideFloatingMenu();
+  savedRange = null;
+}
+
+/**
+ * Recursively wrap text nodes inside a DOM tree with <mark> elements.
+ * Skips block elements (p, div, h1-h6, blockquote, ul, ol, li, pre) —
+ * only wraps inline text, so we never create illegal nesting.
+ */
+function wrapTextNodesWithMark(node, annId, color, markList) {
+  // Collect children first (modifying DOM while iterating is unsafe)
+  const children = Array.from(node.childNodes);
+  for (const child of children) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      // Skip pure whitespace text nodes
+      if (!child.textContent.trim()) continue;
+      const mark = document.createElement('mark');
+      mark.className = 'hl-' + color;
+      mark.setAttribute('data-ann-id', annId);
+      child.parentNode.replaceChild(mark, child);
+      mark.appendChild(child);
+      markList.push(mark);
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const tag = child.tagName.toLowerCase();
+      // Block elements: recurse into children but don't wrap the block itself
+      if (['p','div','h1','h2','h3','h4','h5','h6','blockquote','ul','ol','li','pre'].includes(tag)) {
+        wrapTextNodesWithMark(child, annId, color, markList);
+      } else {
+        // Inline element (em, strong, a, span, etc.) — wrap the element itself in a mark
+        const mark = document.createElement('mark');
+        mark.className = 'hl-' + color;
+        mark.setAttribute('data-ann-id', annId);
+        child.parentNode.replaceChild(mark, child);
+        mark.appendChild(child);
+        markList.push(mark);
+      }
+    }
+  }
 }
 
 function showAnnotationPopup(markEl, event) {
@@ -603,7 +1128,7 @@ function updateAnnotationComment(annId) {
   const inp = $('#annEditComment');
   if (inp) ann.comment = inp.value.trim();
   n.content = editor.innerHTML;
-  persist();
+  persist().catch(e => console.error('persist error:', e));
   renderAnnotations(n.annotations);
   hideAnnPopup();
   toast('批注已更新');
@@ -624,10 +1149,14 @@ function removeAnnotation(annId) {
   const n = notes.find(x => x.id === activeNoteId);
   if (!n) return;
   n.annotations = (n.annotations || []).filter(a => a.id !== annId);
-  const m = editor.querySelector(`mark[data-ann-id="${annId}"]`);
-  if (m) { const p = m.parentNode; while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m); }
+  // Use querySelectorAll — cross-node highlights create multiple <mark> with the same ann-id
+  editor.querySelectorAll(`mark[data-ann-id="${annId}"]`).forEach(m => {
+    const p = m.parentNode;
+    while (m.firstChild) p.insertBefore(m.firstChild, m);
+    p.removeChild(m);
+  });
   n.content = editor.innerHTML;
-  persist();
+  persist().catch(e => console.error('persist error:', e));
   renderAnnotations(n.annotations);
 }
 
@@ -741,7 +1270,7 @@ function saveAnnotationInline(annId, btn) {
   const inp = item.querySelector('.ann-edit-input');
   if (inp) ann.comment = inp.value.trim();
   n.content = editor.innerHTML;
-  persist();
+  persist().catch(e => console.error('persist error:', e));
   renderAnnotations(n.annotations);
   toast('批注已更新');
 }
@@ -757,6 +1286,8 @@ function setupEditorEvents() {
   // Track hover state on floatingMenu with enter/leave flags
   floatingMenu.addEventListener('mouseenter', () => { floatingMenuHovered = true; });
   floatingMenu.addEventListener('mouseleave', () => { floatingMenuHovered = false; });
+  // CRITICAL: prevent mousedown on floatingMenu from stealing focus & clearing editor selection
+  floatingMenu.addEventListener('mousedown', e => { e.preventDefault(); });
   document.addEventListener('selectionchange', handleSelectionChange);
   commentInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); applyAnnotation(); } });
   // Auto-resize commentInput as user types
@@ -781,15 +1312,20 @@ function setupEditorEvents() {
 
 function handleSelectionChange() {
   const sel = window.getSelection();
-  // Don't hide things if user is interacting with annotation popup or floating menu
+  // Don't react if user is interacting with annotation popup or floating menu
   const popup = $('#annPopup');
   if (popup && !popup.classList.contains('hidden')) return;
-  // Don't hide floating menu if user is hovering over it or focus is inside it
+  // Don't hide floating menu or overwrite savedRange if user is hovering over it
   if (!floatingMenu.classList.contains('hidden') && floatingMenuHovered) return;
   if (!floatingMenu.classList.contains('hidden') && document.activeElement && floatingMenu.contains(document.activeElement)) return;
   // Grace period: don't hide for 400ms after menu appeared (covers mouse travel gap)
   if (!floatingMenu.classList.contains('hidden') && Date.now() < floatingMenuProtectUntil) return;
-  if (sel.isCollapsed || !editor.contains(sel.anchorNode)) { hideFloatingMenu(); return; }
+  if (sel.isCollapsed || !editor.contains(sel.anchorNode)) {
+    // Don't clear savedRange when floating menu is visible — user is interacting with it
+    if (floatingMenu.classList.contains('hidden')) savedRange = null;
+    hideFloatingMenu();
+    return;
+  }
   const range = sel.getRangeAt(0);
   const text = range.toString().trim();
   if (!text) { hideFloatingMenu(); return; }
@@ -929,7 +1465,9 @@ async function sendAI(overrideText) {
   if (!key) { addChatMsg('assistant', '⚠️ 请先在 ⚙️ API 设置 中配置密钥'); return; }
 
   const currentUrl = urlInp.value.trim();
-  const needsPageContent = currentUrl && !text.includes('【网页内容】');
+  // Only inject page context when overrideText is provided (quick actions / selection popup)
+  // Regular user chat should NOT auto-include URL
+  const needsPageContent = !!overrideText && currentUrl && !text.includes('【网页内容】');
 
   // Fast path: if page content is already cached, inject it synchronously
   let pageContentReady = false;
@@ -1054,10 +1592,10 @@ function setupSelectionPopup() {
       else if (act === 'explain') sendAI(`请用简洁中文解释以下内容的含义：\n\n${text}`);
       else if (act === 'translate') sendAI(`请将以下内容翻译成中文（如已是中文则翻译成英文）：\n\n${text}`);
       else if (act === 'note') {
-        saveCurrentEditorState();
+        await saveCurrentEditorState();
         const n = { id: Date.now().toString(), title: '网页摘录', category: '摘录', content: `<blockquote>${esc(text)}</blockquote>`, annotations: [], updatedAt: Date.now() };
         notes.unshift(n);
-        persist();
+        await persist();
         toast('已存为新笔记');
       }
     });
@@ -1076,11 +1614,26 @@ function setupOverlay() {
   $('#overlayCloseBtn').onclick = closeNoteOverlay;
   $('#noteOverlayBg').onclick = closeNoteOverlay;
   $('#overlayAddBtn').onclick = () => { addNote(); closeNoteOverlay(); };
-  // Import / Export buttons in both note panel header and overlay
+  // Import button
   $('#btnImport').onclick = importNotes;
-  $('#btnExport').onclick = exportNotes;
   $('#overlayImportBtn').onclick = importNotes;
-  $('#overlayExportBtn').onclick = exportNotes;
+  // Export dropdown toggle
+  $('#btnExport').onclick = (e) => {
+    e.stopPropagation();
+    const menu = $('#exportMenu');
+    menu.classList.toggle('show');
+  };
+  $('#overlayExportBtn').onclick = (e) => {
+    e.stopPropagation();
+    const menu = $('#exportMenu2');
+    menu.classList.toggle('show');
+  };
+  // Close export menus on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.export-dropdown')) {
+      $$('.export-menu').forEach(m => m.classList.remove('show'));
+    }
+  });
 }
 
 function openNoteOverlay() {
@@ -1106,9 +1659,13 @@ function renderNoteListOverlay() {
     d.onmouseenter = () => { if (!active) d.style.background = 'var(--bg-hover)'; };
     d.onmouseleave = () => { if (!active) d.style.background = ''; };
     d.onclick = () => switchNote(n.id);
+    // Add badge for parsed/attachment notes
+    let badge = '';
+    if (n.parsed) badge = '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 ml-1">已解析</span>';
+    else if (n.fileData) badge = '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 ml-1">附件</span>';
     d.innerHTML = `
       <div class="truncate pr-2">
-        <p class="truncate text-sm font-medium">${esc(n.title || '无标题')}</p>
+        <p class="truncate text-sm font-medium">${esc(n.title || '无标题')}${badge}</p>
         <span style="color:var(--text-muted)" class="text-[10px]">${esc(n.category || '未分类')} · ${new Date(n.updatedAt).toLocaleDateString('zh-CN')}</span>
       </div>
       <button onclick="deleteNote('${n.id}',event)" class="opacity-0 group-hover:opacity-100 p-1 rounded transition-opacity" style="color:var(--text-muted)"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
@@ -1208,10 +1765,10 @@ function setupQuickActions() {
       if (p === 'save-note') {
         const lastAssistant = [...aiMessages].reverse().find(m => m.role === 'assistant');
         if (!lastAssistant) { toast('暂无 AI 回复可存'); return; }
-        saveCurrentEditorState();
+        await saveCurrentEditorState();
         const n = { id: Date.now().toString(), title: 'AI 回复 · ' + new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}), category: 'AI', content: md(lastAssistant.content).replace(/<pre.*?<\/pre>/gs, m => `<pre>${m}</pre>`), annotations: [], updatedAt: Date.now() };
         notes.unshift(n);
-        persist();
+        await persist();
         toast('已存为新笔记');
       } else if (p === 'summarize-page') {
         // One-click: auto-fetch page + summarize with high-quality prompt
@@ -1258,12 +1815,44 @@ function setupQuickActions() {
 }
 
 /* ============================================================
-   IMPORT / EXPORT NOTES
+   IMPORT / EXPORT — 支持 Word / PDF / PPT / XLSX 解析与多格式导出
    ============================================================ */
-function exportNotes() {
-  saveCurrentEditorState();
+const ALLOWED_EXTENSIONS = ['.docx', '.pdf', '.pptx', '.xlsx'];
+const ALLOWED_MIME_TYPES = [
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+];
+
+function getFileExtension(filename) {
+  const idx = filename.lastIndexOf('.');
+  return idx >= 0 ? filename.slice(idx).toLowerCase() : '';
+}
+
+function isAllowedFile(filename) {
+  const ext = getFileExtension(filename);
+  return ALLOWED_EXTENSIONS.includes(ext);
+}
+
+async function exportNotes(format) {
+  // Close any open export menu
+  $$('.export-menu').forEach(m => m.classList.remove('show'));
+  if (!format) format = 'json';
+  await saveCurrentEditorState();
+  switch (format) {
+    case 'json': exportAsJSON(); break;
+    case 'docx': await exportAsDocx(); break;
+    case 'pdf':  await exportAsPDF(); break;
+    case 'xlsx': await exportAsXLSX(); break;
+    case 'pptx': await exportAsPPTX(); break;
+    default: exportAsJSON();
+  }
+}
+
+function exportAsJSON() {
   const data = {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     notes: notes
   };
@@ -1277,43 +1866,248 @@ function exportNotes() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast(`已导出 ${notes.length} 篇笔记`);
+  toast(`已导出 ${notes.length} 篇笔记 (JSON)`);
 }
 
 function importNotes() {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.json';
+  input.accept = ALLOWED_EXTENSIONS.join(',') + ',.json';
+  input.multiple = true;
   input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      // Support both bare array and wrapped object
-      const imported = Array.isArray(data) ? data : (data.notes || []);
-      if (!imported.length) { toast('文件中没有笔记数据'); return; }
-      // Validate basic structure
-      const valid = imported.filter(n => n.id && (n.title || n.content));
-      if (!valid.length) { toast('文件格式不正确'); return; }
-      // Assign new IDs to avoid collisions, ensure annotations array
-      const withNewIds = valid.map(n => ({
-        ...n,
-        id: n.id.startsWith('import-') ? n.id : 'import-' + n.id,
-        annotations: n.annotations || [],
-        updatedAt: n.updatedAt || Date.now()
-      }));
-      saveCurrentEditorState();
-      notes = [...withNewIds, ...notes];
-      persist();
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    // Validate all files are allowed types
+    const invalidFiles = files.filter(f => {
+      const ext = getFileExtension(f.name);
+      return !ALLOWED_EXTENSIONS.includes(ext) && ext !== '.json';
+    });
+    if (invalidFiles.length) {
+      const names = invalidFiles.map(f => f.name).join(', ');
+      toast(`不支持的文件类型: ${names}，仅支持 Word/PDF/PPT/XLSX`);
+      return;
+    }
+    let importedCount = 0;
+    for (const file of files) {
+      try {
+        const ext = getFileExtension(file.name);
+        const baseName = file.name.replace(/\.[^.]+$/, '');
+        if (ext === '.json') {
+          // Legacy JSON import
+          const text = await file.text();
+          const data = JSON.parse(text);
+          const imported = Array.isArray(data) ? data : (data.notes || []);
+          const valid = imported.filter(n => n.id && (n.title || n.content));
+          if (!valid.length) continue;
+          const withNewIds = valid.map(n => ({
+            ...n,
+            id: n.id.startsWith('import-') ? n.id : 'import-' + n.id,
+            annotations: n.annotations || [],
+            updatedAt: n.updatedAt || Date.now()
+          }));
+          await saveCurrentEditorState();
+          notes = [...withNewIds, ...notes];
+          importedCount += withNewIds.length;
+        } else if (ext === '.docx') {
+          // Parse .docx using mammoth.js → editable HTML
+          toast('正在解析 Word 文档…');
+          const arrayBuffer = await file.arrayBuffer();
+          const fileData = await readFileAsDataURL(file);
+          // Check storage before importing
+          if (!checkStorageCapacity(file.size * 2)) {
+            toast('存储空间不足，无法导入此文件');
+            continue;
+          }
+          const htmlContent = await parseDocx(arrayBuffer, file.name, file.size);
+          const n = {
+            id: 'import-' + Date.now() + '-' + importedCount,
+            title: baseName,
+            category: 'Word文档',
+            content: htmlContent,
+            annotations: [],
+            fileData: fileData,
+            fileType: ext,
+            parsed: true,
+            updatedAt: Date.now()
+          };
+          // Update attachment card with actual download link
+          n.content = n.content.replace('href=""', `href="${fileData}" download="${esc(file.name)}"`);
+          await saveCurrentEditorState();
+          notes.unshift(n);
+          importedCount++;
+        } else if (ext === '.pdf') {
+          // Parse .pdf using pdf.js → editable text
+          toast('正在解析 PDF 文档…');
+          const arrayBuffer = await file.arrayBuffer();
+          const fileData = await readFileAsDataURL(file);
+          if (!checkStorageCapacity(file.size * 2)) {
+            toast('存储空间不足，无法导入此文件');
+            continue;
+          }
+          const htmlContent = await parsePdf(arrayBuffer, file.name, file.size);
+          const n = {
+            id: 'import-' + Date.now() + '-' + importedCount,
+            title: baseName,
+            category: 'PDF文档',
+            content: htmlContent,
+            annotations: [],
+            fileData: fileData,
+            fileType: ext,
+            parsed: true,
+            updatedAt: Date.now()
+          };
+          n.content = n.content.replace('href=""', `href="${fileData}" download="${esc(file.name)}"`);
+          await saveCurrentEditorState();
+          notes.unshift(n);
+          importedCount++;
+        } else {
+          // .pptx / .xlsx — attachment card with preview-not-supported hint
+          const fileContent = await readFileAsDataURL(file);
+          const typeLabel = {'.pptx':'PPT演示','.xlsx':'Excel表格'}[ext] || '文档';
+          const iconMap = {'.pptx':'📊','.xlsx':'📗'};
+          if (!checkStorageCapacity(file.size * 2)) {
+            toast('存储空间不足，无法导入此文件');
+            continue;
+          }
+          const n = {
+            id: 'import-' + Date.now() + '-' + importedCount,
+            title: baseName,
+            category: typeLabel,
+            content: buildAttachmentCard(file.name, file.size, fileContent, typeLabel, iconMap[ext] || '📎')
+              + `<p style="color:var(--text-muted);font-size:12px;font-style:italic;border-left:3px solid var(--border);padding-left:8px;margin:8px 0">该文件类型暂不支持在线预览，请下载后使用对应软件打开</p>`,
+            annotations: [],
+            fileData: fileContent,
+            fileType: ext,
+            parsed: false,
+            updatedAt: Date.now()
+          };
+          await saveCurrentEditorState();
+          notes.unshift(n);
+          importedCount++;
+        }
+      } catch (err) {
+        toast(`导入 ${file.name} 失败: ${err.message}`);
+        console.error('Import error:', err);
+      }
+    }
+    if (importedCount) {
+      await persist();
       loadActiveNote();
       renderNoteListOverlay();
-      toast(`已导入 ${withNewIds.length} 篇笔记`);
-    } catch (err) {
-      toast('导入失败: ' + err.message);
+      toast(`已导入 ${importedCount} 个文件`);
     }
   };
   input.click();
+}
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('读取文件失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+/* ============================================================
+   RECENTLY DELETED — 30-day retention, restore / permanent delete
+   ============================================================ */
+const DELETED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+async function cleanupExpiredDeleted() {
+  const deleted = await dbGetAllDeleted();
+  const now = Date.now();
+  const expired = deleted.filter(n => (now - (n.deletedAt || 0)) > DELETED_RETENTION_MS);
+  for (const n of expired) {
+    await dbDeleteDeleted(n.id);
+  }
+  if (expired.length) console.log(`Cleaned up ${expired.length} expired deleted notes`);
+}
+
+async function restoreNote(id) {
+  const deleted = await dbGetAllDeleted();
+  const n = deleted.find(x => x.id === id);
+  if (!n) return;
+  // Remove deletedAt marker and add back to notes
+  delete n.deletedAt;
+  notes.unshift(n);
+  await dbDeleteDeleted(id);
+  await persist();
+  activeNoteId = n.id;
+  loadActiveNote();
+  renderNoteListOverlay();
+  renderDeletedList();
+  toast('已恢复笔记');
+}
+
+async function permanentlyDeleteNote(id) {
+  if (!confirm('确定要永久删除这篇笔记吗？此操作无法撤销')) return;
+  await dbDeleteDeleted(id);
+  renderDeletedList();
+  toast('已永久删除');
+}
+
+async function clearAllDeletedNotes() {
+  const deleted = await dbGetAllDeleted();
+  if (!deleted.length) { toast('最近删除为空'); return; }
+  if (!confirm(`确定要永久删除全部 ${deleted.length} 篇笔记吗？此操作无法撤销`)) return;
+  await dbClearDeleted();
+  renderDeletedList();
+  toast('已清空最近删除');
+}
+
+async function renderDeletedList() {
+  const container = $('#deletedListContainer');
+  if (!container) return;
+  const deleted = await dbGetAllDeleted();
+  // Sort by deletedAt descending
+  deleted.sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
+  container.innerHTML = '';
+  if (!deleted.length) {
+    container.innerHTML = '<div style="color:var(--text-muted)" class="text-center text-xs py-8">暂无已删除的笔记</div>';
+    return;
+  }
+  const now = Date.now();
+  deleted.forEach(n => {
+    const daysLeft = Math.max(0, 30 - Math.floor((now - (n.deletedAt || 0)) / (24 * 60 * 60 * 1000)));
+    const d = document.createElement('div');
+    d.className = 'flex items-center justify-between p-2.5 rounded-xl transition-all';
+    d.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border-light)';
+    d.innerHTML = `
+      <div class="truncate pr-2 flex-1 min-w-0">
+        <p class="truncate text-sm font-medium" style="color:var(--text-secondary)">${esc(n.title || '无标题')}</p>
+        <span style="color:var(--text-muted)" class="text-[10px]">${esc(n.category || '未分类')} · 剩余 ${daysLeft} 天</span>
+      </div>
+      <div class="flex items-center gap-1 shrink-0">
+        <button onclick="restoreNote('${n.id}')" class="p-1 rounded hover:opacity-80 transition-colors" style="color:var(--text-muted)" title="恢复"><i data-lucide="undo-2" class="w-3.5 h-3.5"></i></button>
+        <button onclick="permanentlyDeleteNote('${n.id}')" class="p-1 rounded hover:opacity-80 transition-colors" style="color:var(--text-muted)" title="永久删除"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+      </div>
+    `;
+    container.appendChild(d);
+  });
+  lucide.createIcons();
+}
+
+function openDeletedOverlay() {
+  renderDeletedList();
+  $('#deletedOverlay').classList.add('show');
+}
+
+function closeDeletedOverlay() {
+  $('#deletedOverlay').classList.remove('show');
+}
+
+function setupDeletedOverlay() {
+  $('#btnRecentlyDeleted').onclick = openDeletedOverlay;
+  $('#deletedCloseBtn').onclick = closeDeletedOverlay;
+  $('#deletedOverlayBg').onclick = closeDeletedOverlay;
+  $('#clearAllDeletedBtn').onclick = clearAllDeletedNotes;
 }
 
 /* ============================================================
