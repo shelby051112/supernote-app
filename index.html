@@ -255,14 +255,14 @@ mark.hl-blue{background:#bae6fd;padding:1px 4px;border-radius:3px;border-bottom:
       <button id="btnRef" style="color:var(--text-muted)" class="p-1 rounded hover:opacity-70"><i data-lucide="rotate-cw" class="w-4 h-4"></i></button>
       <div style="background:var(--bg-panel);border:1px solid var(--border)" class="flex-1 flex items-center h-7 rounded-full px-3 gap-1.5 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
         <span id="lockIco" class="text-[11px]">🔒</span>
-        <input id="urlInp" type="text" style="color:var(--text-primary)" class="flex-1 text-xs outline-none bg-transparent" placeholder="输入网址或搜索…" value="https://www.wikipedia.org" spellcheck="false">
+        <input id="urlInp" type="text" style="color:var(--text-primary)" class="flex-1 text-xs outline-none bg-transparent" placeholder="输入网址或搜索…" value="https://cn.bing.com" spellcheck="false">
       </div>
       <button id="toggleAI" style="color:var(--text-muted)" class="p-1.5 rounded-lg hover:text-indigo-600 transition-colors" title="AI 面板"><i data-lucide="bot" class="w-4 h-4"></i></button>
     </div>
     <!-- iframe -->
     <div class="flex-1 relative">
       <div class="resize-shield" id="resizeShield"></div>
-      <iframe id="webFrame" src="https://www.wikipedia.org" sandbox="allow-same-origin allow-scripts allow-forms allow-popups" referrerpolicy="no-referrer" class="w-full h-full border-none"></iframe>
+      <iframe id="webFrame" src="https://cn.bing.com" sandbox="allow-same-origin allow-scripts allow-forms allow-popups" referrerpolicy="no-referrer" class="w-full h-full border-none"></iframe>
     </div>
   </div>
 
@@ -1410,10 +1410,21 @@ function setupBrowserNav() {
   const go = () => {
     let u = urlInp.value.trim();
     if (!u) return;
-    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
-    webFrame.src = u;
-    urlInp.value = u;
-    // Pre-fetch page content as soon as URL is navigated
+    if (/^https?:\/\//i.test(u)) {
+      // Full URL — navigate directly
+      webFrame.src = u;
+      urlInp.value = u;
+    } else if (/^[^\s]+\.[^\s]+$/.test(u)) {
+      // Domain like example.com — add https://
+      u = 'https://' + u;
+      webFrame.src = u;
+      urlInp.value = u;
+    } else {
+      // Plain text — Bing search
+      const s = 'https://cn.bing.com/search?q=' + encodeURIComponent(u);
+      webFrame.src = s;
+      urlInp.value = s;
+    }
     prefetchPageContent();
   };
   urlInp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
