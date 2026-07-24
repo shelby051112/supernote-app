@@ -785,6 +785,7 @@ let activeNoteId = null;
 let selectedColor = 'yellow';
 let savedRange = null;
 let aiMessages = [];
+const AI_SYSTEM_PROMPT = `你是 SuperNote 的 AI 助手。你可以直接访问和阅读网页内容——当用户消息中包含【网页来源】和【网页内容】标记时，说明该网页内容已经被系统自动抓取并提供给你了，你可以直接基于这些内容回答问题，不要再说"我无法访问互联网"或"我无法浏览网页"。`;
 let aiStreaming = false;
 let saveTimer = null;
 let annExpanded = true;
@@ -1465,19 +1466,26 @@ async function sendAI(overrideText) {
   if (!key) { addChatMsg('assistant', '⚠️ 请先在 ⚙️ API 设置 中配置密钥'); return; }
 
   const currentUrl = urlInp.value.trim();
-  // Only inject page context when overrideText is provided (quick actions / selection popup)
-  // Regular user chat should NOT auto-include URL
-  const needsPageContent = !!overrideText && currentUrl && !text.includes('【网页内容】');
+  // Detect URLs in user message for auto-fetch
+  const urlRegex = /https?:\/\/[^\s<>"')\]，。、；：！？）】}]+/g;
+  const msgUrls = text.match(urlRegex) || [];
+  // Inject page context when: (1) quick actions with browsing URL, or (2) user message contains URLs
+  const needsPageContent = !text.includes('【网页内容】') && (
+    (!!overrideText && currentUrl) || msgUrls.length > 0
+  );
+
+  // Determine which URL to fetch: prefer URL in message, fallback to current browsing URL
+  const fetchUrl = (msgUrls.length > 0 ? msgUrls[0] : currentUrl);
 
   // Fast path: if page content is already cached, inject it synchronously
   let pageContentReady = false;
   if (needsPageContent) {
-    if (cachedPageUrl === currentUrl && cachedPageContent) {
-      text = `【当前浏览网页：${currentUrl}】\n【网页内容】\n${cachedPageContent}\n\n---\n${text}`;
+    if (cachedPageUrl === fetchUrl && cachedPageContent) {
+      text = `【网页来源：${fetchUrl}】\n【网页内容】\n${cachedPageContent}\n\n---\n${text}`;
       pageContentReady = true;
     } else {
       // Always tell AI the URL even if content not yet fetched
-      text = `【当前浏览网页：${currentUrl}】\n\n${text}`;
+      text = `【网页来源：${fetchUrl}】\n\n${text}`;
     }
   }
 
@@ -1491,15 +1499,17 @@ async function sendAI(overrideText) {
   let pageFetchPromise = null;
   if (needsPageContent && !pageContentReady) {
     contentEl.innerHTML = '<span style="color:var(--text-muted)">📡 正在读取网页内容…</span>';
-    pageFetchPromise = fetchPageContent(currentUrl);
+    pageFetchPromise = fetchPageContent(fetchUrl);
   }
 
   try {
+    // Build messages with system prompt
+    const messagesWithSystem = [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...aiMessages];
     // Connect to AI stream immediately
     const res = await fetch(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({ model, messages: aiMessages, stream: true })
+      body: JSON.stringify({ model, messages: messagesWithSystem, stream: true })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -1508,7 +1518,7 @@ async function sendAI(overrideText) {
       const pageContent = await pageFetchPromise;
       if (pageContent) {
         // Update the user message with full context (URL was already included above)
-        const fullText = `【当前浏览网页：${currentUrl}】\n【网页内容】\n${pageContent}\n\n---\n${text}`;
+        const fullText = `【网页来源：${fetchUrl}】\n【网页内容】\n${pageContent}\n\n---\n${text}`;
         aiMessages[aiMessages.length - 1].content = fullText;
         // Abort current stream and start a new one with full context
         res.body.cancel();
@@ -1516,7 +1526,7 @@ async function sendAI(overrideText) {
         const res2 = await fetch(`${base}/chat/completions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-          body: JSON.stringify({ model, messages: aiMessages, stream: true })
+          body: JSON.stringify({ model, messages: messagesWithSystem, stream: true })
         });
         if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
         await consumeStream(res2, contentEl);
